@@ -553,7 +553,14 @@ class ProjectRepository(
             }
             val result = geminiService.translateNonEnglishToEnglish(queryClean, geminiKey)
             android.util.Log.i("ProjectRepository", "Translated search term '$queryClean' to English: '$result'")
-            if (result.isNotEmpty()) result else queryClean
+            val localExtracted = com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine.ensureEnglishSearchQuery(queryClean)
+            if (result.isNotEmpty() && !result.any { it.code > 127 }) {
+                result
+            } else if (localExtracted.isNotEmpty() && !localExtracted.any { it.code > 127 }) {
+                localExtracted
+            } else {
+                "news documentary journalism visual"
+            }
         } else {
             queryClean
         }
@@ -1122,10 +1129,11 @@ class ProjectRepository(
             ""
         }
         onProgress?.invoke(0, 0, "Refining prompt and preparing scene-to-visual mapping...")
+        val cleanTopic = com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer.cleanNewsTopic(topicContext)
         val refinementPlan = com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer
             .prepareScriptForGeminiAnalysis(
                 rawScript = script,
-                topicContext = topicContext,
+                topicContext = cleanTopic,
                 style = style,
                 publishingStyle = publishingStyle
             )
@@ -1139,7 +1147,7 @@ class ProjectRepository(
             imageSource = imageSource,
             customGeminiKey = savedGemini,
             customUnsplashKey = savedUnsplash,
-            topicContext = topicContext,
+            topicContext = cleanTopic,
             publishingStyle = publishingStyle
         )
 
@@ -1148,7 +1156,7 @@ class ProjectRepository(
             .enforceSceneVisualMapping(
                 scenes = rawScenes,
                 style = style,
-                topicContext = topicContext
+                topicContext = cleanTopic
             )
 
         onProgress?.invoke(0, refinedScenes.size, "Breaking script into ${refinedScenes.size} scene storyboards...")
@@ -1195,37 +1203,6 @@ class ProjectRepository(
         sourceSpecificMedia: List<String>,
         alreadyUsedUrls: MutableSet<String>
     ): Scene {
-        // 0. HIGHEST PRIORITY: If source-specific media extracted directly from RSS article metadata is provided,
-        // strictly prioritize each unique media item ONCE (e.g. index 0 gets image 0, index 1 gets image 1).
-        if (sourceSpecificMedia.isNotEmpty() && index < sourceSpecificMedia.size) {
-            val candidateMedia = sourceSpecificMedia[index]
-            val isCandidateVideo = candidateMedia.contains(".mp4", ignoreCase = true) ||
-                    candidateMedia.contains("video", ignoreCase = true) ||
-                    candidateMedia.contains(".webm", ignoreCase = true) ||
-                    candidateMedia.contains(".mov", ignoreCase = true) ||
-                    candidateMedia.contains(".m4v", ignoreCase = true)
-            val candidateType = if (isCandidateVideo) "VIDEO" else "IMAGE"
-
-            MediaFetchingStatusMonitor.recordSuccess(
-                sceneNumber = scene.sceneNumber,
-                visualPrompt = scene.visualPrompt,
-                sourceUsed = "RSS Article Metadata",
-                mediaUrl = candidateMedia,
-                attemptedSources = listOf("RSS Article Metadata")
-            )
-            alreadyUsedUrls.add(candidateMedia)
-            val localPath = downloadMediaToLocal(candidateMedia)
-            val finalPath = if (localPath.isNotEmpty()) localPath else candidateMedia
-            return scene.copy(
-                mediaPath = finalPath,
-                remoteUrl = candidateMedia,
-                mediaType = candidateType,
-                mediaSourceUsed = "RSS Article Metadata",
-                mediaFetchStatus = "SUCCESS",
-                mediaFetchError = null
-            )
-        }
-
         var resolvedPath: String? = null
         
         // Sanitize and refine scene keywords using feedback loop to ensure they strictly depict voiceover
@@ -1400,6 +1377,25 @@ class ProjectRepository(
                 isSuccess = true,
                 attemptedSources = allAttempted.toList()
             )
+        }
+
+        // Fallback: If all dynamic stock providers failed and an authentic article media item is available, use as fallback
+        if (resolvedRes == null && sourceSpecificMedia.isNotEmpty() && index < sourceSpecificMedia.size) {
+            val candidateMedia = sourceSpecificMedia[index]
+            if (candidateMedia.isNotBlank() && !isRepetitiveOrLowQuality(candidateMedia, "", alreadyUsedUrls, visualMedium)) {
+                val isCandidateVideo = candidateMedia.contains(".mp4", ignoreCase = true) ||
+                        candidateMedia.contains("video", ignoreCase = true) ||
+                        candidateMedia.contains(".webm", ignoreCase = true) ||
+                        candidateMedia.contains(".mov", ignoreCase = true) ||
+                        candidateMedia.contains(".m4v", ignoreCase = true)
+                alreadyUsedUrls.add(candidateMedia)
+                resolvedRes = VisualAssetResolution(
+                    url = candidateMedia,
+                    sourceUsed = "RSS Article Metadata Fallback",
+                    isSuccess = true,
+                    attemptedSources = allAttempted.toList()
+                )
+            }
         }
 
         if (resolvedRes != null && resolvedRes.isSuccess && resolvedRes.url.isNotEmpty()) {
@@ -2224,10 +2220,11 @@ class ProjectRepository(
         }
         val pixabayKey = if (!savedPixabay.isNullOrEmpty()) savedPixabay.trim() else ApiLoadBalancerService.resolvePixabayApiKey(rawPixabayKey)
 
+        val cleanTopic = com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer.cleanNewsTopic(topicContext)
         val refinementPlan = com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer
             .prepareScriptForGeminiAnalysis(
                 rawScript = script,
-                topicContext = topicContext,
+                topicContext = cleanTopic,
                 style = style,
                 publishingStyle = "TikTok / Instagram Reels"
             )
@@ -2241,7 +2238,7 @@ class ProjectRepository(
             imageSource = imageSource,
             customGeminiKey = savedGemini,
             customUnsplashKey = savedUnsplash,
-            topicContext = topicContext,
+            topicContext = cleanTopic,
             publishingStyle = "TikTok / Instagram Reels"
         )
 
@@ -2249,7 +2246,7 @@ class ProjectRepository(
             .enforceSceneVisualMapping(
                 scenes = rawScenes,
                 style = style,
-                topicContext = topicContext
+                topicContext = cleanTopic
             )
 
         refinedScenes.mapIndexed { index, scene ->
@@ -2258,9 +2255,9 @@ class ProjectRepository(
                 "atmospheric", "dramatic atmospheric storytelling view", "atmospheric view", "moody", "ambient", "storytelling"
             )
             val segmentNarr = scene.narrationText.ifEmpty { scene.subtitle }
-            val queryText = com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
-                segmentText = segmentNarr.ifEmpty { scene.visualPrompt },
-                proposedQuery = scene.keywords.firstOrNull() ?: "",
+            val queryText = com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine.ensureEnglishSearchQuery(
+                query = scene.keywords.firstOrNull() ?: "",
+                segmentContext = segmentNarr.ifEmpty { scene.visualPrompt },
                 style = style
             )
 
@@ -2269,9 +2266,25 @@ class ProjectRepository(
             val fWidth = if (aspectRatio == "9:16") 720 else if (aspectRatio == "16:9") 1280 else 1024
             val fHeight = if (aspectRatio == "9:16") 1280 else if (aspectRatio == "16:9") 720 else 1024
             val fSeed = Math.abs(queryText.hashCode() + index)
+            val targetPromptForFallback = if (scene.visualPrompt.isNotBlank() &&
+                !scene.visualPrompt.any { it in '\u0900'..'\u097F' } &&
+                scene.visualPrompt.length > 25 &&
+                !scene.visualPrompt.lowercase().contains("vibrant, crime") &&
+                !scene.visualPrompt.lowercase().contains("crime, vibrant")
+            ) {
+                scene.visualPrompt
+            } else {
+                com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine.generateRichContextualVisualPrompt(
+                    narrationText = segmentNarr,
+                    style = style,
+                    topicContext = cleanTopic,
+                    sceneNumber = index + 1,
+                    sceneTotal = refinedScenes.size
+                )
+            }
             val dynamicFallbackUrl = try {
                 com.ritvyom.yashoraReelgenerator.data.remote.MediaSelectionService.buildPollinationsImageUrl(
-                    rawPrompt = "$queryText, cinematic $style style",
+                    rawPrompt = targetPromptForFallback,
                     width = fWidth,
                     height = fHeight,
                     seed = fSeed,
@@ -2365,16 +2378,16 @@ class ProjectRepository(
             val candidateMedia = if (sourceSpecificMedia.isNotEmpty() && index < sourceSpecificMedia.size) {
                 sourceSpecificMedia[index]
             } else ""
-            val finalSelectedUrl = if (candidateMedia.isNotBlank()) candidateMedia else defaultUrl
+            val finalSelectedUrl = if (defaultUrl.isNotBlank() && !defaultUrl.contains("picsum")) defaultUrl else if (candidateMedia.isNotBlank()) candidateMedia else defaultUrl
 
             com.ritvyom.yashoraReelgenerator.domain.models.PreviewScene(
                 sceneNumber = scene.sceneNumber,
                 narrationText = scene.narrationText,
-                visualPrompt = scene.visualPrompt,
+                visualPrompt = targetPromptForFallback,
                 durationSeconds = scene.durationSeconds,
-                unsplashUrl = if (candidateMedia.isNotEmpty()) candidateMedia else if (customUrl.isNotEmpty()) customUrl else if (unsplashUrl.isNotEmpty()) unsplashUrl else "https://images.unsplash.com/photo-1541701494587-cb58502866ab?auto=format",
-                pexelsUrl = if (candidateMedia.isNotEmpty()) candidateMedia else if (pexelsUrl.isNotEmpty()) pexelsUrl else "https://images.pexels.com/photos/1103970/pexels-photo-1103970.jpeg?auto=compress",
-                pixabayUrl = if (candidateMedia.isNotEmpty()) candidateMedia else if (pixabayUrl.isNotEmpty()) pixabayUrl else "https://images.unsplash.com/photo-1541701494587-cb58502866ab?auto=format",
+                unsplashUrl = if (defaultUrl.isNotEmpty() && !defaultUrl.contains("picsum")) defaultUrl else if (candidateMedia.isNotEmpty()) candidateMedia else if (customUrl.isNotEmpty()) customUrl else if (unsplashUrl.isNotEmpty()) unsplashUrl else "https://images.unsplash.com/photo-1541701494587-cb58502866ab?auto=format",
+                pexelsUrl = if (pexelsUrl.isNotEmpty()) pexelsUrl else if (defaultUrl.isNotEmpty()) defaultUrl else "https://images.pexels.com/photos/1103970/pexels-photo-1103970.jpeg?auto=compress",
+                pixabayUrl = if (pixabayUrl.isNotEmpty()) pixabayUrl else if (defaultUrl.isNotEmpty()) defaultUrl else "https://images.unsplash.com/photo-1541701494587-cb58502866ab?auto=format",
                 selectedUrl = finalSelectedUrl
             )
         }
@@ -2627,6 +2640,13 @@ class ProjectRepository(
         }
         
         // Fallback if everything got filtered out
+        if (lowerClean.any { it.code > 127 }) {
+            val localTranslated = com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine.ensureEnglishSearchQuery(clean)
+            if (localTranslated.isNotEmpty() && !localTranslated.any { it.code > 127 }) {
+                return localTranslated
+            }
+            return "news documentary story visual"
+        }
         return lowerClean
     }
 

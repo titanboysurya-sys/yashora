@@ -80,6 +80,14 @@ fun YouCutTimelineTrack(
     onOpenTransitionManager: ((clipIndex: Int) -> Unit)? = null,
     onReplaceClip: ((clipIndex: Int) -> Unit)? = null,
     onSpeedAdjustClick: ((clipIndex: Int) -> Unit)? = null,
+    onBeginTimelineGesture: ((actionName: String) -> Unit)? = null,
+    onCommitTimelineGesture: (() -> Unit)? = null,
+    onCancelTimelineGesture: (() -> Unit)? = null,
+    voiceoverTrackName: String? = null,
+    voiceoverDurationMs: Long = 0L,
+    voiceoverVolume: Float = 1.0f,
+    onVoiceoverTrackClick: (() -> Unit)? = null,
+    onPlayVoiceoverPreview: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -396,6 +404,33 @@ fun YouCutTimelineTrack(
                                             )
                                         }
                                     }
+
+                                    if (scene.narrationText.isNotBlank() || !scene.customVoiceAudioPath.isNullOrBlank()) {
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(2.dp),
+                                            color = Color(0xFF4A148C)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.5.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Mic,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFFFD54F),
+                                                    modifier = Modifier.size(8.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(1.dp))
+                                                Text(
+                                                    text = "VOICE",
+                                                    color = Color.White,
+                                                    fontSize = 6.5.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
 
                                 // Quick Replace Icon button directly on clip header
@@ -515,12 +550,15 @@ fun YouCutTimelineTrack(
                                                     activeDraggingClipIndex = index
                                                     activeDraggingDurationMs = if (scene.durationMs > 0) scene.durationMs else scene.durationSeconds * 1000L
                                                     isDraggingHandleRight = false
+                                                    onBeginTimelineGesture?.invoke("Trim Clip Start")
                                                 },
                                                 onDragEnd = {
                                                     activeDraggingClipIndex = null
+                                                    onCommitTimelineGesture?.invoke()
                                                 },
                                                 onDragCancel = {
                                                     activeDraggingClipIndex = null
+                                                    onCancelTimelineGesture?.invoke()
                                                 },
                                                 onHorizontalDrag = { change, dragAmount ->
                                                     change.consume()
@@ -530,7 +568,6 @@ fun YouCutTimelineTrack(
                                                     if (newMs != currentMs) {
                                                         activeDraggingDurationMs = newMs
                                                         onDurationMsChanged?.invoke(index, newMs)
-                                                        onDurationChanged?.invoke(index, kotlin.math.max(1, (newMs / 1000L).toInt()))
                                                     }
                                                 }
                                             )
@@ -567,12 +604,15 @@ fun YouCutTimelineTrack(
                                                     activeDraggingClipIndex = index
                                                     activeDraggingDurationMs = if (scene.durationMs > 0) scene.durationMs else scene.durationSeconds * 1000L
                                                     isDraggingHandleRight = true
+                                                    onBeginTimelineGesture?.invoke("Trim Clip End")
                                                 },
                                                 onDragEnd = {
                                                     activeDraggingClipIndex = null
+                                                    onCommitTimelineGesture?.invoke()
                                                 },
                                                 onDragCancel = {
                                                     activeDraggingClipIndex = null
+                                                    onCancelTimelineGesture?.invoke()
                                                 },
                                                 onHorizontalDrag = { change, dragAmount ->
                                                     change.consume()
@@ -582,7 +622,6 @@ fun YouCutTimelineTrack(
                                                     if (newMs != currentMs) {
                                                         activeDraggingDurationMs = newMs
                                                         onDurationMsChanged?.invoke(index, newMs)
-                                                        onDurationChanged?.invoke(index, kotlin.math.max(1, (newMs / 1000L).toInt()))
                                                     }
                                                 }
                                             )
@@ -770,7 +809,86 @@ fun YouCutTimelineTrack(
             }
         }
 
-        // 4. Multi-Track Audio Management Lane
+        // 4. Dedicated Voiceover Narration Track Lane
+        val hasVoiceover = !voiceoverTrackName.isNullOrEmpty() || scenes.any { it.narrationText.isNotBlank() || !it.customVoiceAudioPath.isNullOrBlank() }
+        if (hasVoiceover) {
+            val displayVoiceName = voiceoverTrackName ?: "🎙️ Voiceover Track (${scenes.count { it.narrationText.isNotBlank() || !it.customVoiceAudioPath.isNullOrBlank() }} clips active)"
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF231433))
+                    .border(1.dp, Color(0xFFBA68C8).copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                    .clickable { onVoiceoverTrackClick?.invoke() }
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.RecordVoiceOver,
+                        contentDescription = "Voiceover Track",
+                        tint = Color(0xFFFFD54F),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = displayVoiceName,
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0xFF140822),
+                        border = BorderStroke(0.6.dp, Color(0xFFBA68C8))
+                    ) {
+                        Text(
+                            text = "VOICE: ${(voiceoverVolume * 100).toInt()}%",
+                            color = Color(0xFFFFD54F),
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    if (voiceoverDurationMs > 0L) {
+                        Text(
+                            text = String.format(Locale.US, "%.1fs", voiceoverDurationMs / 1000f),
+                            color = Color.LightGray,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    if (onPlayVoiceoverPreview != null) {
+                        Icon(
+                            imageVector = Icons.Default.VolumeUp,
+                            contentDescription = "Preview Voiceover",
+                            tint = Color(0xFFFFD54F),
+                            modifier = Modifier
+                                .size(16.dp)
+                                .clickable { onPlayVoiceoverPreview.invoke() }
+                        )
+                    }
+                }
+            }
+        }
+
+        // 5. Multi-Track Background Music Management Lane
         if (!audioTrackName.isNullOrEmpty()) {
             Spacer(modifier = Modifier.height(4.dp))
             Row(

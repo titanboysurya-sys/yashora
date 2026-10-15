@@ -600,15 +600,21 @@ object ReelVideoCompiler {
             // Pre-calculate total frames across entire reel for high-precision frame progress and ETA monitoring
             var totalDurationEstimate = 0.0
             for (idx in scenes.indices) {
-                val f = voiceFiles.getOrNull(idx)
-                val voiceDurationFloat = if (f != null && f.exists() && f.length() >= 44) {
-                    val info = WavFileInfo.readWavFile(f)
-                    if (info != null && info.pcmData != null && info.pcmData.size > 0) {
+                val sc = scenes[idx]
+                val voiceFile = voiceFiles.getOrNull(idx)?.takeIf { it.exists() && it.length() >= 44 }
+                    ?: sc.customVoiceAudioPath?.let { File(it).takeIf { f -> f.exists() && f.length() >= 44 } }
+                val voiceDurationFloat = if (voiceFile != null) {
+                    val info = WavFileInfo.readWavFile(voiceFile)
+                    if (info != null && info.pcmData != null && info.pcmData.isNotEmpty()) {
                         val wavBytesPerSec = info.sampleRate * info.channels * (info.bitsPerSample / 8)
                         info.pcmData.size.toDouble() / wavBytesPerSec
                     } else 0.0
                 } else 0.0
-                val effectiveDuration = if (voiceDurationFloat > 0.0) voiceDurationFloat else scenes[idx].durationSeconds.toDouble().coerceAtLeast(1.0)
+                val effectiveDuration = if (voiceDurationFloat > 0.0) {
+                    maxOf(sc.durationSeconds.toDouble(), voiceDurationFloat + 0.3)
+                } else {
+                    sc.durationSeconds.toDouble().coerceAtLeast(1.0)
+                }
                 totalDurationEstimate += effectiveDuration
             }
             val totalFramesAcrossAllScenes = Math.round(totalDurationEstimate * FRAME_RATE).toInt().coerceAtLeast(1)
@@ -626,10 +632,11 @@ object ReelVideoCompiler {
                 val bmp = bitmaps[i]
                 val tempVid = tempVideoFiles.getOrNull(i)
 
-                val f = voiceFiles.getOrNull(i)
-                val voiceDurationFloat = if (f != null && f.exists() && f.length() >= 44) {
-                    val info = WavFileInfo.readWavFile(f)
-                    if (info != null && info.pcmData != null && info.pcmData.size > 0) {
+                val voiceFile = voiceFiles.getOrNull(i)?.takeIf { it.exists() && it.length() >= 44 }
+                    ?: scene.customVoiceAudioPath?.let { File(it).takeIf { f -> f.exists() && f.length() >= 44 } }
+                val voiceDurationFloat = if (voiceFile != null) {
+                    val info = WavFileInfo.readWavFile(voiceFile)
+                    if (info != null && info.pcmData != null && info.pcmData.isNotEmpty()) {
                         val wavBytesPerSec = info.sampleRate * info.channels * (info.bitsPerSample / 8)
                         info.pcmData.size.toDouble() / wavBytesPerSec
                     } else {
@@ -639,7 +646,8 @@ object ReelVideoCompiler {
                     0.0
                 }
                 val effectiveDuration = if (voiceDurationFloat > 0.0) {
-                    voiceDurationFloat
+                    // Generous 300ms tail padding ensures closing syllables and reverberations are never cut off
+                    maxOf(scene.durationSeconds.toDouble(), voiceDurationFloat + 0.3)
                 } else {
                     val baseSec = if (scene.durationMs > 0) scene.durationMs.toDouble() / 1000.0 else scene.durationSeconds.toDouble()
                     baseSec.coerceAtLeast(0.3)
@@ -846,18 +854,11 @@ object ReelVideoCompiler {
 
                 val sceneLayers = scene.getCanvasLayers()
 
-                val rawCaptionText = if (scene.subtitle.isNotBlank()) scene.subtitle.trim() else scene.narrationText.trim()
-                val sceneSrtSegments = if (scene.srtCaptions.isNotBlank()) {
-                    VideoSpeechTranscriptionEngine.parseSrt(scene.srtCaptions)
-                } else emptyList()
-                val isDynamicCaptions = scene.isDynamicCaptionsEnabled && (rawCaptionText.isNotBlank() || sceneSrtSegments.isNotEmpty())
-
-                val dynamicWords = if (isDynamicCaptions) {
-                    rawCaptionText.split(Regex("\\s+")).filter { it.isNotBlank() }
-                } else emptyList()
+                // Always precompute cleanly timed, subdivided segments (3-4 words each) so captions match speech timing
+                val sceneSrtSegments = VideoSpeechTranscriptionEngine.getOrGenerateSegments(scene)
+                val isDynamicCaptions = scene.isDynamicCaptionsEnabled && sceneSrtSegments.isNotEmpty()
 
                 val dynamicLines = mutableListOf<DynamicCaptionLine>()
-                val dynamicPillRect: RectF?
                 val dynamicPillCornerRadius = 12f * scaleFactor
                 val dynamicLineHeight: Float
                 val dynamicLineSpacing = 6f * scaleFactor
@@ -871,7 +872,7 @@ object ReelVideoCompiler {
                 val dynamicBaseTextSize = 22f * scaleFactor
                 val segmentLayouts = mutableListOf<SegmentLayout>()
 
-                if (isDynamicCaptions && (dynamicWords.isNotEmpty() || sceneSrtSegments.isNotEmpty())) {
+                if (sceneSrtSegments.isNotEmpty()) {
                     dynamicHighlightColorInt = try {
                         Color.parseColor(scene.dynamicCaptionHighlightColor.ifEmpty { "#FFEB3B" })
                     } catch (e: Exception) {
@@ -907,39 +908,7 @@ object ReelVideoCompiler {
                     val maxContentWidth = maxAvailableWidth - 2 * dynamicHPadding
                     dynamicLineHeight = dynamicBaseTextSize * 1.35f
 
-                    // Precompute fallback full-text dynamic lines
-                    if (dynamicWords.isNotEmpty()) {
-                        var curLine = DynamicCaptionLine()
-                        for (wIdx in dynamicWords.indices) {
-                            val wordStr = dynamicWords[wIdx]
-                            val wordW = captionInactiveWordPaint.measureText(wordStr)
-                            val space = if (curLine.words.isEmpty()) 0f else dynamicWordSpacing
-                            if (curLine.words.isNotEmpty() && curLine.totalWidth + space + wordW > maxContentWidth) {
-                                dynamicLines.add(curLine)
-                                curLine = DynamicCaptionLine()
-                            }
-                            val addedSpace = if (curLine.words.isEmpty()) 0f else dynamicWordSpacing
-                            curLine.words.add(DynamicCaptionWord(wordStr, wIdx, wordW))
-                            curLine.totalWidth += addedSpace + wordW
-                        }
-                        if (curLine.words.isNotEmpty()) {
-                            dynamicLines.add(curLine)
-                        }
-
-                        val maxLineWidth = dynamicLines.maxOfOrNull { it.totalWidth } ?: 0f
-                        val pillWidth = (maxLineWidth + 2 * dynamicHPadding).coerceAtMost(width - 32f * scaleFactor)
-                        val pillHeight = dynamicLines.size * dynamicLineHeight + (dynamicLines.size - 1) * dynamicLineSpacing + 2 * dynamicVPadding
-
-                        val pillLeft = (width - pillWidth) / 2f
-                        val pillRight = pillLeft + pillWidth
-                        val pillBottom = height - 100f * scaleFactor
-                        val pillTop = pillBottom - pillHeight
-                        dynamicPillRect = RectF(pillLeft, pillTop, pillRight, pillBottom)
-                    } else {
-                        dynamicPillRect = null
-                    }
-
-                    // Precompute millisecond-synchronized segment layouts for Gemini SRT captions
+                    // Precompute millisecond-synchronized segment layouts for cleanly timed 3-4 word segments
                     if (sceneSrtSegments.isNotEmpty()) {
                         for (seg in sceneSrtSegments) {
                             val segWords = seg.text.split(Regex("\\s+")).filter { it.isNotBlank() }
@@ -980,7 +949,6 @@ object ReelVideoCompiler {
                         }
                     }
                 } else {
-                    dynamicPillRect = null
                     dynamicHighlightColorInt = Color.WHITE
                     dynamicTextColorInt = Color.WHITE
                     dynamicBgColorInt = Color.TRANSPARENT
@@ -1042,13 +1010,8 @@ object ReelVideoCompiler {
                     }
 
                     textPaint.color = resolvedTextColor
-                    subtitleLines = splitTextToLines(subtitle, textPaint, (width - 60f * scaleFactor))
-                    subtitleBoxRect = RectF(
-                        20f * scaleFactor,
-                        height - 130f * scaleFactor - (subtitleLines.size * subtitleTextHeight + subtitlePadding),
-                        width - 20f * scaleFactor,
-                        height - 130f * scaleFactor
-                    )
+                    subtitleLines = emptyList()
+                    subtitleBoxRect = null
                 } else {
                     subtitleLines = emptyList()
                     subtitleBoxRect = null
@@ -1341,25 +1304,20 @@ object ReelVideoCompiler {
                         }
                     }
                     
-                    // Draw subtitles if present (Dynamic Karaoke Captions with Gemini SRT sync or classic styled subtitles)
-                    val activeSegment = if (isDynamicCaptions && segmentLayouts.isNotEmpty()) {
+                    // Draw subtitles if present (Dynamic Karaoke Captions or classic styled subtitles synchronized with audio)
+                    val activeSegment = if (segmentLayouts.isNotEmpty()) {
                         val curFrameSec = frame.toFloat() / FRAME_RATE.toFloat()
                         segmentLayouts.firstOrNull { curFrameSec >= it.startSec && curFrameSec <= it.endSec }
-                            ?: if (dynamicLines.isEmpty()) segmentLayouts.firstOrNull() else null
                     } else null
 
-                    if (isDynamicCaptions && (activeSegment != null || (dynamicLines.isNotEmpty() && dynamicPillRect != null))) {
-                        val renderLines = activeSegment?.lines ?: dynamicLines
-                        val renderPillRect = activeSegment?.pillRect ?: dynamicPillRect!!
-                        val renderWords = activeSegment?.words ?: dynamicWords
-                        val activeWordIdx = if (activeSegment != null) {
-                            val curFrameSec = frame.toFloat() / FRAME_RATE.toFloat()
-                            val segDur = (activeSegment.endSec - activeSegment.startSec).coerceAtLeast(0.2f)
-                            val progress = ((curFrameSec - activeSegment.startSec) / segDur).coerceIn(0f, 1f)
-                            (progress * renderWords.size).toInt().coerceIn(0, renderWords.size - 1)
-                        } else {
-                            ((frame.toFloat() / sceneFramesCount.coerceAtLeast(1)) * renderWords.size).toInt().coerceIn(0, renderWords.size - 1)
-                        }
+                    if (isDynamicCaptions && activeSegment != null) {
+                        val renderLines = activeSegment.lines
+                        val renderPillRect = activeSegment.pillRect
+                        val renderWords = activeSegment.words
+                        val curFrameSec = frame.toFloat() / FRAME_RATE.toFloat()
+                        val segDur = (activeSegment.endSec - activeSegment.startSec).coerceAtLeast(0.2f)
+                        val progress = ((curFrameSec - activeSegment.startSec) / segDur).coerceIn(0f, 1f)
+                        val activeWordIdx = (progress * renderWords.size).toInt().coerceIn(0, renderWords.size - 1)
 
                         // 1. Draw stylish translucent rounded background pill
                         canvas.drawRoundRect(renderPillRect, dynamicPillCornerRadius, dynamicPillCornerRadius, captionBoxPaint)
@@ -1419,10 +1377,12 @@ object ReelVideoCompiler {
                             }
                             lineBaseline += dynamicLineHeight + dynamicLineSpacing
                         }
-                    } else if (subtitleLines.isNotEmpty() && subtitleBoxRect != null) {
+                    } else if (!isDynamicCaptions && activeSegment != null) {
+                        val renderLines = activeSegment.lines
+                        val renderPillRect = activeSegment.pillRect
                         if (subtitleDrawBox) {
                             backgroundBoxPaint.color = subtitleBgColor
-                            canvas.drawRoundRect(subtitleBoxRect, 12f * scaleFactor, 12f * scaleFactor, backgroundBoxPaint)
+                            canvas.drawRoundRect(renderPillRect, 12f * scaleFactor, 12f * scaleFactor, backgroundBoxPaint)
                         }
                         
                         if (subtitleUseGlow) {
@@ -1431,14 +1391,16 @@ object ReelVideoCompiler {
                             textPaint.setShadowLayer(4f * scaleFactor, 2f * scaleFactor, 2f * scaleFactor, Color.BLACK)
                         }
 
-                        for (lineIdx in subtitleLines.indices) {
-                            val lineText = subtitleLines[lineIdx]
+                        var lineBaseline = renderPillRect.top + dynamicVPadding + dynamicLineHeight * 0.78f
+                        for (line in renderLines) {
+                            val lineText = line.words.joinToString(" ") { it.text }
                             canvas.drawText(
                                 lineText,
                                 width / 2f,
-                                subtitleBoxRect.top + subtitlePadding + (lineIdx + 0.7f) * subtitleTextHeight,
+                                lineBaseline,
                                 textPaint
                             )
+                            lineBaseline += dynamicLineHeight + dynamicLineSpacing
                         }
                         textPaint.clearShadowLayer()
                     }
@@ -2467,6 +2429,31 @@ object ReelVideoCompiler {
         return result
     }
 
+    private fun mixPcmTracks(trackA: ByteArray, trackB: ByteArray, volA: Float = 1.0f, volB: Float = 1.0f): ByteArray {
+        val maxSize = maxOf(trackA.size, trackB.size)
+        val mixed = ByteArray(maxSize)
+        val shortCount = maxSize / 2
+        for (i in 0 until shortCount) {
+            val sampleA = if (i * 2 + 1 < trackA.size) {
+                val low = trackA[i * 2].toInt() and 0xFF
+                val high = trackA[i * 2 + 1].toInt()
+                ((high shl 8) or low).toShort().toFloat()
+            } else 0f
+
+            val sampleB = if (i * 2 + 1 < trackB.size) {
+                val low = trackB[i * 2].toInt() and 0xFF
+                val high = trackB[i * 2 + 1].toInt()
+                ((high shl 8) or low).toShort().toFloat()
+            } else 0f
+
+            val mixedFloat = (sampleA * volA) + (sampleB * volB)
+            val mixedShort = com.ritvyom.yashoraReelgenerator.engine.audio.AudioMixerEngine.softLimit(mixedFloat)
+            mixed[i * 2] = (mixedShort.toInt() and 0xFF).toByte()
+            mixed[i * 2 + 1] = ((mixedShort.toInt() shr 8) and 0xFF).toByte()
+        }
+        return mixed
+    }
+
     private fun getBgMusicPcm(context: Context, category: String, targetSampleRate: Int, targetChannels: Int, totalLengthBytes: Int): ByteArray {
         val bgBytes = ByteArray(totalLengthBytes)
         // 1. Try to load ambient_loop from assets
@@ -2638,11 +2625,20 @@ object ReelVideoCompiler {
                 val f = voiceFiles.getOrNull(i)
                 
                 var pcmData: ByteArray? = null
-                if (f != null && f.exists() && f.length() >= 44) {
-                    val info = WavFileInfo.readWavFile(f)
-                    if (info != null) {
-                        // Dynamically resample to target timeline sample rate & channels to fix pitch/robotic glitch
-                        pcmData = resamplePcm(
+                val isVideoScene = scene.mediaType.equals("VIDEO", ignoreCase = true) ||
+                        scene.visualPrompt.contains("Imported", ignoreCase = true) ||
+                        scene.mediaPath?.endsWith(".mp4", ignoreCase = true) == true ||
+                        isVideoPath(context, scene.mediaPath)
+
+                // 1. Resolve Voiceover Audio (Custom audio file, recorded mic audio, or synthetic TTS voice file)
+                val voiceFile = f?.takeIf { it.exists() && it.length() >= 44 }
+                    ?: scene.customVoiceAudioPath?.let { File(it).takeIf { vf -> vf.exists() && vf.length() >= 44 } }
+
+                var voiceoverPcm: ByteArray? = null
+                if (voiceFile != null) {
+                    val info = WavFileInfo.readWavFile(voiceFile)
+                    if (info != null && info.pcmData.isNotEmpty()) {
+                        voiceoverPcm = resamplePcm(
                             srcBytes = info.pcmData,
                             srcSampleRate = info.sampleRate,
                             destSampleRate = sampleRate,
@@ -2652,39 +2648,52 @@ object ReelVideoCompiler {
                     }
                 }
 
-                // 2. If no TTS voice file, check for custom voice recording / imported audio track
-                if (pcmData == null && !scene.customVoiceAudioPath.isNullOrEmpty()) {
+                // If no direct WAV file, check if customVoiceAudioPath needs decoding (e.g. mp3/m4a recording)
+                if (voiceoverPcm == null && !scene.customVoiceAudioPath.isNullOrEmpty()) {
                     try {
-                        pcmData = decodeAudioTrackToPcm(
+                        voiceoverPcm = decodeAudioTrackToPcm(
                             context = context,
                             mediaPath = scene.customVoiceAudioPath!!,
                             targetSampleRate = sampleRate,
                             targetChannels = channels,
-                            maxDurationMs = (scene.durationSeconds * 1000L)
+                            maxDurationMs = (scene.durationSeconds * 1000L).coerceAtLeast(5000L)
                         )
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed reading customVoiceAudioPath: ${scene.customVoiceAudioPath}", e)
                     }
                 }
 
-                // 3. User Original Video Audio Preservation:
-                // If scene contains an imported or recorded video, extract its original voice & audio track when preserveOriginalAudio is true!
-                if (pcmData == null && preserveOriginalAudio && !scene.mediaPath.isNullOrEmpty() && (scene.mediaType == "VIDEO" || isVideoPath(context, scene.mediaPath))) {
+                // 2. Extract original video audio track if scene has a video clip
+                var videoPcm: ByteArray? = null
+                if (isVideoScene && preserveOriginalAudio && !scene.mediaPath.isNullOrEmpty()) {
                     try {
                         Log.d(TAG, "Extracting original video audio track from scene ${i + 1}: ${scene.mediaPath}")
-                        pcmData = decodeAudioTrackToPcm(
+                        videoPcm = decodeAudioTrackToPcm(
                             context = context,
                             mediaPath = scene.mediaPath!!,
                             targetSampleRate = sampleRate,
                             targetChannels = channels,
-                            maxDurationMs = (scene.durationSeconds * 1000L)
+                            maxDurationMs = (scene.durationSeconds * 1000L).coerceAtLeast(5000L)
                         )
-                        if (pcmData != null) {
-                            Log.d(TAG, "Successfully extracted ${pcmData.size} bytes of original video audio from scene ${i + 1}!")
+                        if (videoPcm != null) {
+                            Log.d(TAG, "Successfully extracted ${videoPcm.size} bytes of video audio from scene ${i + 1}!")
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed extracting video audio for scene ${i + 1}", e)
                     }
+                }
+
+                // 3. Audio Combination: NEVER discard voiceover!
+                // If scene has BOTH voiceover and original video audio, mix them with voiceover at 100% volume
+                // and original video audio ducked in the background.
+                pcmData = when {
+                    voiceoverPcm != null && videoPcm != null -> {
+                        val duckedVideo = applyVolumeToPcm(videoPcm, (scene.volume * 0.25f).coerceIn(0f, 1f))
+                        mixPcmTracks(trackA = voiceoverPcm, trackB = duckedVideo, volA = 1.0f, volB = 1.0f)
+                    }
+                    voiceoverPcm != null -> voiceoverPcm
+                    videoPcm != null -> videoPcm
+                    else -> null
                 }
 
                 // 3b. Apply speed adjustment & time-ramping to original video PCM audio if speed is modified
@@ -3293,7 +3302,12 @@ object ReelVideoCompiler {
         }
         
         // Wrap narration text/subtitles inside a bottom translucent modern pill box
-        val rawCaptionText = if (scene.subtitle.isNotBlank()) scene.subtitle.trim() else scene.narrationText.trim()
+        // Time-synchronized 3-4 word segments matching current frame so captions never cover the whole screen
+        val sceneSrtSegments = VideoSpeechTranscriptionEngine.getOrGenerateSegments(scene)
+        val sceneTotalSec = if (scene.durationMs > 0) scene.durationMs / 1000f else scene.durationSeconds.toFloat().coerceAtLeast(1f)
+        val curFrameSec = (frameIndex.toFloat() / totalFrames.coerceAtLeast(1)) * sceneTotalSec
+        val activeSeg = sceneSrtSegments.firstOrNull { curFrameSec >= it.startSec && curFrameSec <= it.endSec }
+        val rawCaptionText = activeSeg?.text ?: ""
         val isDynamic = scene.isDynamicCaptionsEnabled && rawCaptionText.isNotBlank()
 
         if (isDynamic) {

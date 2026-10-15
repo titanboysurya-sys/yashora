@@ -127,16 +127,17 @@ object VideoSpeechTranscriptionEngine {
                 appendLine("Listen carefully to this audio track extracted from the user's video clip or voice narration.")
                 appendLine("Task: Transcribe all spoken words accurately in the exact language spoken. $langInstruction")
                 appendLine("Ensure natural punctuation, correct spelling of words, and provide precise timecodes formatted into SRT subtitle captions.")
+                appendLine("CRITICAL: Break captions into short, punchy 3 to 4 word micro-segments with millisecond-accurate timestamps matching when words are actually spoken. NEVER put long sentences in one segment.")
                 appendLine("Respond strictly with valid JSON with this exact schema:")
                 appendLine("{")
                 appendLine("  \"fullTranscript\": \"Full transcription of all spoken words in the video.\",")
                 appendLine("  \"detectedLanguage\": \"Hindi / English / Hinglish\",")
-                appendLine("  \"srtContent\": \"1\\n00:00:00,000 --> 00:00:02,800\\nFirst caption line\\n\\n2\\n00:00:02,800 --> 00:00:05,500\\nSecond caption line\",")
+                appendLine("  \"srtContent\": \"1\\n00:00:00,000 --> 00:00:01,800\\nFirst 3-4 words\\n\\n2\\n00:00:01,800 --> 00:00:03,500\\nNext 3-4 words\",")
                 appendLine("  \"segments\": [")
                 appendLine("    {")
                 appendLine("      \"startSec\": 0.0,")
-                appendLine("      \"endSec\": 2.8,")
-                appendLine("      \"text\": \"Subtitle sentence or phrase\"")
+                appendLine("      \"endSec\": 1.8,")
+                appendLine("      \"text\": \"3 to 4 spoken words\"")
                 appendLine("    }")
                 appendLine("  ]")
                 appendLine("}")
@@ -166,12 +167,11 @@ object VideoSpeechTranscriptionEngine {
                 )
             )
 
-            // Modern models priority as recommended in gemini-api skill for multimodal audio
+            // Modern Gemini models supporting multimodal audio input
             val modelsToTry = listOf(
-                "gemini-2.5-flash-native-audio-preview-12-2025",
+                "gemini-2.5-flash",
                 "gemini-flash-latest",
-                "gemini-3.1-pro-preview",
-                "gemini-3.5-flash"
+                "gemini-1.5-flash"
             )
 
             var lastError: Throwable? = null
@@ -179,7 +179,13 @@ object VideoSpeechTranscriptionEngine {
                 for (model in modelsToTry) {
                     try {
                         Log.d(TAG, "Attempting speech transcription with $tierLabel ($model)...")
-                        val response = GeminiApiClient.service.generateContent(model, apiKey, request)
+                        val response = kotlinx.coroutines.withTimeoutOrNull(25_000L) {
+                            GeminiApiClient.service.generateContent(model, apiKey, request)
+                        }
+                        if (response == null) {
+                            Log.w(TAG, "Model $model timed out after 25s, trying next candidate...")
+                            continue
+                        }
                         val text = response.candidates?.firstOrNull()?.content?.parts
                             ?.mapNotNull { it.text }
                             ?.joinToString("\n")
@@ -289,64 +295,57 @@ object VideoSpeechTranscriptionEngine {
 
             var srtContent = root.optString("srtContent", "").trim()
 
-            // Fallback segments if JSON had full transcript but no array
-            if (segmentsList.isEmpty() && fullTranscript.isNotBlank()) {
-                val sentences = fullTranscript.split(Regex("(?<=[.!?।])\\s+"))
-                    .map { it.trim() }
-                    .filter { it.isNotBlank() }
-
-                var curTime = 0.0f
-                for (sentence in sentences) {
-                    val duration = (sentence.length * 0.07f).coerceIn(2.0f, 6.0f)
-                    segmentsList.add(
-                        SubtitleSegment(
-                            startSec = curTime,
-                            endSec = curTime + duration,
-                            text = sentence
-                        )
-                    )
-                    curTime += duration
+            // Prioritize srtContent if present because it contains exact millisecond-level timecodes
+            if (srtContent.isNotBlank()) {
+                val parsedSrt = parseSrt(srtContent)
+                if (parsedSrt.isNotEmpty()) {
+                    segmentsList.clear()
+                    segmentsList.addAll(parsedSrt)
                 }
             }
 
-            if (srtContent.isBlank() && segmentsList.isNotEmpty()) {
-                srtContent = segmentsToSrt(segmentsList)
-            } else if (srtContent.isNotBlank() && segmentsList.isEmpty()) {
-                segmentsList.addAll(parseSrt(srtContent))
+            // Fallback segments if both array and SRT were missing but full transcript exists
+            if (segmentsList.isEmpty() && fullTranscript.isNotBlank()) {
+                segmentsList.addAll(splitTextIntoTimedSegments(fullTranscript, 30f))
             }
 
+            val finalSegments = subdivideLongSegments(segmentsList)
+            val finalSrt = segmentsToSrt(finalSegments)
+
             TranscriptionResult(
-                isSuccess = fullTranscript.isNotBlank() || segmentsList.isNotEmpty() || srtContent.isNotBlank(),
-                fullTranscript = if (fullTranscript.isNotBlank()) fullTranscript else segmentsList.joinToString(" ") { it.text },
+                isSuccess = fullTranscript.isNotBlank() || finalSegments.isNotEmpty(),
+                fullTranscript = if (fullTranscript.isNotBlank()) fullTranscript else finalSegments.joinToString(" ") { it.text },
                 detectedLanguage = detectedLang,
-                segments = segmentsList,
-                srtContent = if (srtContent.isNotBlank()) srtContent else segmentsToSrt(segmentsList)
+                segments = finalSegments,
+                srtContent = finalSrt
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed parsing transcription JSON: $rawJson", e)
             // Check if raw output was formatted directly as an SRT file
             val directSrtSegments = parseSrt(rawJson)
             if (directSrtSegments.isNotEmpty()) {
-                val full = directSrtSegments.joinToString(" ") { it.text }
+                val subdivided = subdivideLongSegments(directSrtSegments)
+                val full = subdivided.joinToString(" ") { it.text }
                 return TranscriptionResult(
                     isSuccess = true,
                     fullTranscript = full,
                     detectedLanguage = "Auto",
-                    segments = directSrtSegments,
-                    srtContent = rawJson.trim()
+                    segments = subdivided,
+                    srtContent = segmentsToSrt(subdivided)
                 )
             }
 
             // If raw text itself was returned instead of json
             val cleaned = rawJson.replace(Regex("[{}\"]"), "").trim()
             if (cleaned.isNotBlank() && !cleaned.startsWith("error", ignoreCase = true)) {
-                val segs = listOf(SubtitleSegment(0.0f, 5.0f, cleaned))
+                val segs = splitTextIntoTimedSegments(cleaned, 10f)
+                val subdivided = subdivideLongSegments(segs)
                 TranscriptionResult(
                     isSuccess = true,
                     fullTranscript = cleaned,
                     detectedLanguage = "Auto",
-                    segments = segs,
-                    srtContent = segmentsToSrt(segs)
+                    segments = subdivided,
+                    srtContent = segmentsToSrt(subdivided)
                 )
             } else {
                 TranscriptionResult(
@@ -415,33 +414,51 @@ object VideoSpeechTranscriptionEngine {
 
     /**
      * Parses .srt formatted content into a list of SubtitleSegment items.
+     * Uses robust regex matching on timestamp arrows ("-->") to support single or multi-line spacing.
      */
     fun parseSrt(srtContent: String): List<SubtitleSegment> {
         val result = mutableListOf<SubtitleSegment>()
         if (srtContent.isBlank()) return result
         try {
-            val blocks = srtContent.trim().replace("\r\n", "\n").split(Regex("\n\n+"))
-            for (block in blocks) {
-                val lines = block.lines().map { it.trim() }.filter { it.isNotEmpty() }
-                if (lines.size >= 2) {
-                    val timeLine = if (lines[0].contains("-->")) lines[0] else if (lines.size >= 2 && lines[1].contains("-->")) lines[1] else null
-                    if (timeLine != null) {
-                        val parts = timeLine.split("-->")
-                        if (parts.size == 2) {
-                            val startSec = parseSrtTimestamp(parts[0])
-                            val endSec = parseSrtTimestamp(parts[1])
-                            val textLines = lines.filter { !it.contains("-->") && it.toIntOrNull() == null }
-                            val text = textLines.joinToString(" ").trim()
-                            if (text.isNotBlank()) {
-                                result.add(
-                                    SubtitleSegment(
-                                        startSec = startSec,
-                                        endSec = endSec.coerceAtLeast(startSec + 0.5f),
-                                        text = text
-                                    )
-                                )
-                            }
+            val normalized = srtContent.trim().replace("\r\n", "\n")
+            val timestampRegex = Regex("""(\d{1,2}:\d{2}:\d{2}[,\.]\d{1,3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}[,\.]\d{1,3})""")
+            val matches = timestampRegex.findAll(normalized).toList()
+
+            if (matches.isNotEmpty()) {
+                for (i in matches.indices) {
+                    val match = matches[i]
+                    val startSec = parseSrtTimestamp(match.groupValues[1])
+                    val endSec = parseSrtTimestamp(match.groupValues[2])
+
+                    val textStart = match.range.last + 1
+                    val textEnd = if (i + 1 < matches.size) matches[i + 1].range.first else normalized.length
+                    val rawBlock = normalized.substring(textStart, textEnd)
+
+                    val cleanLines = rawBlock.lines()
+                        .map { it.trim() }
+                        .filter { line ->
+                            line.isNotEmpty() && line.toIntOrNull() == null && !line.contains("-->")
                         }
+                    val text = cleanLines.joinToString(" ").trim()
+                    if (text.isNotBlank()) {
+                        result.add(
+                            SubtitleSegment(
+                                startSec = startSec,
+                                endSec = endSec.coerceAtLeast(startSec + 0.3f),
+                                text = text
+                            )
+                        )
+                    }
+                }
+            } else {
+                // Fallback for line-by-line text without standard SRT timestamps
+                val lines = normalized.lines().map { it.trim() }.filter { it.isNotBlank() }
+                if (lines.isNotEmpty()) {
+                    var curT = 0f
+                    val durPerLine = 2.0f
+                    for (line in lines) {
+                        result.add(SubtitleSegment(startSec = curT, endSec = curT + durPerLine, text = line))
+                        curT += durPerLine
                     }
                 }
             }
@@ -449,6 +466,100 @@ object VideoSpeechTranscriptionEngine {
             Log.e(TAG, "Error parsing SRT text", e)
         }
         return result
+    }
+
+    /**
+     * Splits arbitrary subtitle or transcript text into natural, punchy 3-5 word timed segments
+     * distributed evenly across totalDurationSec, preventing caption overflow/screen clutter.
+     */
+    fun splitTextIntoTimedSegments(text: String, totalDurationSec: Float): List<SubtitleSegment> {
+        val clean = text.trim()
+        if (clean.isBlank()) return emptyList()
+
+        val allWords = clean.split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (allWords.isEmpty()) return emptyList()
+
+        // Chunk words into small, readable groups of 3 to 5 words (ideal for Reels/Shorts dynamic captions)
+        val wordChunks = allWords.chunked(4)
+        val totalChunks = wordChunks.size
+        val effectiveDuration = totalDurationSec.coerceAtLeast(totalChunks * 1.0f)
+        val chunkDuration = (effectiveDuration / totalChunks).coerceIn(0.8f, 3.5f)
+
+        val result = mutableListOf<SubtitleSegment>()
+        var curStart = 0.0f
+        for (chunk in wordChunks) {
+            val chunkText = chunk.joinToString(" ")
+            val curEnd = (curStart + chunkDuration).coerceAtMost(effectiveDuration)
+            result.add(
+                SubtitleSegment(
+                    startSec = curStart,
+                    endSec = curEnd.coerceAtLeast(curStart + 0.4f),
+                    text = chunkText
+                )
+            )
+            curStart = curEnd
+        }
+        return result
+    }
+
+    /**
+     * Subdivides any segment that has more than 5 words into smaller, punchy 3-4 word micro-segments.
+     * This guarantees captions never fill up the whole screen at any given moment.
+     */
+    fun subdivideLongSegments(segments: List<SubtitleSegment>): List<SubtitleSegment> {
+        if (segments.isEmpty()) return emptyList()
+        val result = mutableListOf<SubtitleSegment>()
+
+        for (seg in segments) {
+            val words = seg.text.replace("\n", " ").trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+            if (words.size <= 4) {
+                result.add(seg.copy(text = words.joinToString(" ")))
+            } else {
+                // Break into punchy 3-4 word sub-chunks so captions never cover the screen
+                val chunkSize = if (words.size in 5..6) 3 else 4
+                val chunks = words.chunked(chunkSize)
+                val totalSegDur = (seg.endSec - seg.startSec).coerceAtLeast(0.5f)
+                val subDur = totalSegDur / chunks.size
+                var subStart = seg.startSec
+                for (chunk in chunks) {
+                    val subEnd = subStart + subDur
+                    result.add(
+                        SubtitleSegment(
+                            startSec = subStart,
+                            endSec = subEnd.coerceAtLeast(subStart + 0.3f),
+                            text = chunk.joinToString(" ")
+                        )
+                    )
+                    subStart = subEnd
+                }
+            }
+        }
+        return result
+    }
+
+    /**
+     * Gets parsed SRT segments for a scene, or auto-generates cleanly timed 3-5 word segments
+     * from subtitle or narration text so captions match video timing and never clutter the screen.
+     */
+    fun getOrGenerateSegments(scene: com.ritvyom.yashoraReelgenerator.domain.models.Scene): List<SubtitleSegment> {
+        val totalSec = if (scene.durationMs > 0) {
+            scene.durationMs / 1000f
+        } else {
+            scene.durationSeconds.toFloat().coerceAtLeast(1f)
+        }
+
+        var list = if (scene.srtCaptions.isNotBlank()) {
+            parseSrt(scene.srtCaptions)
+        } else emptyList()
+
+        if (list.isEmpty()) {
+            val raw = if (scene.subtitle.isNotBlank()) scene.subtitle else scene.narrationText
+            if (raw.isNotBlank()) {
+                list = splitTextIntoTimedSegments(raw, totalSec)
+            }
+        }
+
+        return subdivideLongSegments(list)
     }
 
     /**

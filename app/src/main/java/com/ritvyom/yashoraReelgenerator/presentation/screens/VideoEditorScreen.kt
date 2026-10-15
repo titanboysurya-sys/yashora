@@ -76,6 +76,7 @@ import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import java.io.File
 import com.ritvyom.yashoraReelgenerator.domain.models.Scene
 import com.ritvyom.yashoraReelgenerator.domain.models.CanvasLayer
 import com.ritvyom.yashoraReelgenerator.domain.models.getCanvasLayers
@@ -372,6 +373,14 @@ fun VideoEditorScreen(
         }
     }
 
+    val shouldSpeakSceneNarration: (Scene?) -> Boolean = { sc ->
+        if (sc == null) false
+        else {
+            (!sc.customVoiceAudioPath.isNullOrBlank() && File(sc.customVoiceAudioPath!!).exists()) ||
+            (sc.narrationText.isNotBlank() && !viewModel.isPlaceholderNarration(sc.narrationText))
+        }
+    }
+
     val localBgmPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -431,6 +440,9 @@ fun VideoEditorScreen(
     val timelineAudioPathState by viewModel.timelineAudioTrackPath.collectAsState()
     val timelineAudioVolState by viewModel.timelineAudioVolume.collectAsState()
     val isAutoDuckingState by viewModel.isAutoDuckingEnabled.collectAsState()
+    val latestMasterVoicePath by viewModel.latestMasterVoiceoverPath.collectAsState()
+    val customMasterVoicePathState by viewModel.customMasterVoicePath.collectAsState()
+    val masterVoiceVolState by viewModel.masterVoiceVolume.collectAsState()
     val bgMediaPlayer = remember { mutableStateOf<MediaPlayer?>(null) }
 
     DisposableEffect(timelineAudioPathState) {
@@ -581,18 +593,37 @@ fun VideoEditorScreen(
     LaunchedEffect(isPlaying, selectedSceneIndex, activeScenes, playbackSeekTrigger) {
         if (isPlaying && activeScenes.isNotEmpty() && selectedSceneIndex in activeScenes.indices) {
             val currentSceneItem = activeScenes[selectedSceneIndex]
-            val totalDurationMs = (currentSceneItem.durationMs.takeIf { it > 0 } ?: (currentSceneItem.durationSeconds * 1000L)).coerceAtLeast(300L)
+            var totalDurationMs = (currentSceneItem.durationMs.takeIf { it > 0 } ?: (currentSceneItem.durationSeconds * 1000L)).coerceAtLeast(300L)
+            // If scene has custom voiceover, ensure totalDurationMs covers the full speech audio without cutting off
+            currentSceneItem.customVoiceAudioPath?.let { path ->
+                val vFile = File(path)
+                if (vFile.exists() && vFile.length() > 44) {
+                    val info = com.ritvyom.yashoraReelgenerator.presentation.utils.WavFileInfo.readWavFile(vFile)
+                    if (info != null && info.pcmData != null && info.pcmData.isNotEmpty()) {
+                        val wavBytesPerSec = info.sampleRate * info.channels * (info.bitsPerSample / 8)
+                        val voiceMs = (info.pcmData.size.toDouble() / wavBytesPerSec * 1000.0).toLong()
+                        if (voiceMs > totalDurationMs) {
+                            totalDurationMs = voiceMs + 250L
+                        }
+                    }
+                }
+            }
             val startTime = System.currentTimeMillis() - playbackElapsedMs
             val isSpeedCurveActive = !currentSceneItem.speedCurvePreset.equals("Linear", ignoreCase = true) && !currentSceneItem.speedCurvePoints.isNullOrBlank()
             val curvePts = if (isSpeedCurveActive) com.ritvyom.yashoraReelgenerator.engine.timeline.CanonicalSpeedEngine.parsePoints(currentSceneItem.speedCurvePoints) else null
 
             while (isPlaying && (System.currentTimeMillis() - startTime) < totalDurationMs) {
                 val currentElapsed = (System.currentTimeMillis() - startTime).coerceIn(0L, totalDurationMs)
-                playbackElapsedMs = currentElapsed
-
-                // Dynamic speed ramping for ExoPlayer in real time:
                 val isSceneVideo = currentSceneItem.mediaType.equals("VIDEO", ignoreCase = true) ||
                         com.ritvyom.yashoraReelgenerator.presentation.utils.ReelVideoCompiler.isVideoPath(context, currentSceneItem.mediaPath ?: "")
+                if (isSceneVideo && exoPlayer.isPlaying) {
+                    val pos = exoPlayer.currentPosition
+                    playbackElapsedMs = if (pos > 0) pos else currentElapsed
+                } else {
+                    playbackElapsedMs = currentElapsed
+                }
+
+                // Dynamic speed ramping for ExoPlayer in real time:
                 if (isSceneVideo && exoPlayer.isPlaying) {
                     if (isSpeedCurveActive && curvePts != null) {
                         val normT = (currentElapsed.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
@@ -617,8 +648,8 @@ fun VideoEditorScreen(
                     playbackSeekTrigger++
                     // Synthesizes speaking voice during playback only if scene has custom narration
                     val nextScene = activeScenes[selectedSceneIndex + 1]
-                    if (nextScene.narrationText.isNotBlank() && !viewModel.isPlaceholderNarration(nextScene.narrationText)) {
-                        viewModel.speakText(nextScene.narrationText)
+                    if (shouldSpeakSceneNarration(nextScene)) {
+                        viewModel.playSceneNarration(nextScene)
                     }
                 } else {
                     viewModel.selectedSceneIndex.value = 0
@@ -1010,6 +1041,15 @@ fun VideoEditorScreen(
                             expanded = showTopBarOverflowMenu,
                             onDismissRequest = { showTopBarOverflowMenu = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Save Project Draft".localize(appLanguageState)) },
+                                leadingIcon = { Icon(Icons.Default.Save, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                onClick = {
+                                    showTopBarOverflowMenu = false
+                                    viewModel.saveCurrentScenesToDb()
+                                    android.widget.Toast.makeText(context, "Project saved to drafts!".localize(appLanguageState), android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            )
                             // Mix / Tune option is always available in the menu for quick access
                             DropdownMenuItem(
                                 text = { Text("Edit Script & Config (Mix)".localize(appLanguageState)) },
@@ -1186,8 +1226,8 @@ fun VideoEditorScreen(
                                         if (isPlaying) {
                                             viewModel.stopSpeak()
                                             activeScenes.getOrNull(selectedSceneIndex + 1)?.let {
-                                                if (it.narrationText.isNotBlank() && !viewModel.isPlaceholderNarration(it.narrationText)) {
-                                                    viewModel.speakText(it.narrationText)
+                                                if (shouldSpeakSceneNarration(it)) {
+                                                    viewModel.playSceneNarration(it)
                                                 }
                                             }
                                         }
@@ -1198,8 +1238,8 @@ fun VideoEditorScreen(
                                         if (isPlaying) {
                                             viewModel.stopSpeak()
                                             activeScenes.getOrNull(selectedSceneIndex - 1)?.let {
-                                                if (it.narrationText.isNotBlank() && !viewModel.isPlaceholderNarration(it.narrationText)) {
-                                                    viewModel.speakText(it.narrationText)
+                                                if (shouldSpeakSceneNarration(it)) {
+                                                    viewModel.playSceneNarration(it)
                                                 }
                                             }
                                         }
@@ -2147,6 +2187,7 @@ fun VideoEditorScreen(
                                     DynamicCaptionOverlay(
                                         scene = sc,
                                         isPlaying = isPlaying,
+                                        currentPositionMs = playbackElapsedMs,
                                         modifier = Modifier
                                             .align(Alignment.BottomCenter)
                                             .padding(bottom = 8.dp, start = 8.dp, end = 8.dp),
@@ -2157,56 +2198,67 @@ fun VideoEditorScreen(
                                     val subTextColor = parseHexColor(sc.subtitleColor.ifEmpty { "#FFFFFF" })
                                     val subBgColor = parseHexColor(sc.subtitleBgColor.ifEmpty { "#B3000000" })
 
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier
-                                            .align(Alignment.BottomCenter)
-                                            .padding(bottom = 8.dp, start = 12.dp, end = 12.dp)
-                                    ) {
-                                        if (isSubtitleActive) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .background(Color(0xE614141E), RoundedCornerShape(16.dp))
-                                                    .border(0.5.dp, YouCutOrange.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                listOf("#FFFFFF", "#FFFF00", "#FF5722", "#00E5FF", "#FF007F", "#00E676", "#FFD700").forEach { hex ->
-                                                    val c = try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { Color.White }
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(15.dp)
-                                                            .clip(CircleShape)
-                                                            .background(c)
-                                                            .border(
-                                                                1.dp,
-                                                                if (sc.subtitleColor.equals(hex, ignoreCase = true)) YouCutOrange else Color.Gray.copy(alpha = 0.5f),
-                                                                CircleShape
-                                                            )
-                                                            .clickable {
-                                                                viewModel.editSceneSubtitleColor(selectedSceneIndex, hex)
-                                                            }
-                                                    )
-                                                }
-                                            }
-                                            Spacer(modifier = Modifier.height(3.dp))
-                                        }
+                                    val curSec = (playbackElapsedMs / 1000f).coerceAtLeast(0f)
+                                    val activeClassicText = remember(sc.srtCaptions, sc.subtitle, curSec, isPlaying) {
+                                        val segs = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.getOrGenerateSegments(sc)
+                                        val match = segs.firstOrNull { curSec >= it.startSec && curSec <= it.endSec }
+                                        if (match != null) match.text
+                                        else if (!isPlaying && curSec < 0.4f) segs.firstOrNull()?.text ?: ""
+                                        else ""
+                                    }
 
-                                        Text(
-                                            text = sc.subtitle,
-                                            color = subTextColor,
-                                            fontSize = 11.sp,
-                                            fontWeight = curFontWeight,
-                                            fontFamily = curFontFamily,
-                                            fontStyle = curFontStyle,
-                                            textAlign = TextAlign.Center,
-                                            lineHeight = 15.sp,
+                                    if (activeClassicText.isNotBlank()) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
                                             modifier = Modifier
-                                                .clickable { isSubtitleActive = !isSubtitleActive }
-                                                .background(subBgColor, RoundedCornerShape(6.dp))
-                                                .padding(horizontal = 10.dp, vertical = 5.dp)
-                                        )
+                                                .align(Alignment.BottomCenter)
+                                                .padding(bottom = 8.dp, start = 12.dp, end = 12.dp)
+                                        ) {
+                                            if (isSubtitleActive) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .background(Color(0xE614141E), RoundedCornerShape(16.dp))
+                                                        .border(0.5.dp, YouCutOrange.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    listOf("#FFFFFF", "#FFFF00", "#FF5722", "#00E5FF", "#FF007F", "#00E676", "#FFD700").forEach { hex ->
+                                                        val c = try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { Color.White }
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(15.dp)
+                                                                .clip(CircleShape)
+                                                                .background(c)
+                                                                .border(
+                                                                    1.dp,
+                                                                    if (sc.subtitleColor.equals(hex, ignoreCase = true)) YouCutOrange else Color.Gray.copy(alpha = 0.5f),
+                                                                    CircleShape
+                                                                )
+                                                                .clickable {
+                                                                    viewModel.editSceneSubtitleColor(selectedSceneIndex, hex)
+                                                                }
+                                                        )
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.height(3.dp))
+                                            }
+
+                                            Text(
+                                                text = activeClassicText,
+                                                color = subTextColor,
+                                                fontSize = 12.sp,
+                                                fontWeight = curFontWeight,
+                                                fontFamily = curFontFamily,
+                                                fontStyle = curFontStyle,
+                                                textAlign = TextAlign.Center,
+                                                lineHeight = 16.sp,
+                                                modifier = Modifier
+                                                    .clickable { isSubtitleActive = !isSubtitleActive }
+                                                    .background(subBgColor, RoundedCornerShape(6.dp))
+                                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                                            )
+                                        }
                                     }
                                 }
                             } else if (sc.mediaType == "VIDEO" || sc.mediaPath?.endsWith(".mp4", ignoreCase = true) == true) {
@@ -2405,8 +2457,8 @@ fun VideoEditorScreen(
                                 } else {
                                     viewModel.isPlaying.value = true
                                     currentScene?.let {
-                                        if (it.narrationText.isNotBlank() && !viewModel.isPlaceholderNarration(it.narrationText)) {
-                                            viewModel.speakText(it.narrationText)
+                                        if (shouldSpeakSceneNarration(it)) {
+                                            viewModel.playSceneNarration(it)
                                         }
                                     }
                                 }
@@ -2654,8 +2706,8 @@ fun VideoEditorScreen(
                                     if (isPlaying) {
                                         viewModel.stopSpeak()
                                         activeScenes.getOrNull(targetIndex)?.let {
-                                            if (it.narrationText.isNotBlank() && !viewModel.isPlaceholderNarration(it.narrationText)) {
-                                                viewModel.speakText(it.narrationText)
+                                            if (shouldSpeakSceneNarration(it)) {
+                                                viewModel.playSceneNarration(it)
                                             }
                                         }
                                     }
@@ -2682,15 +2734,31 @@ fun VideoEditorScreen(
 
             val isUndoEnabled by viewModel.canUndo.collectAsState()
             val isRedoEnabled by viewModel.canRedo.collectAsState()
+            val undoCount by viewModel.undoCount.collectAsState()
+            val redoCount by viewModel.redoCount.collectAsState()
+            val lastActionName by viewModel.lastActionName.collectAsState()
 
             // 1. YouCut Signature Transport Controls
             YouCutTransportBar(
                 isPlaying = isPlaying,
                 canUndo = isUndoEnabled,
                 canRedo = isRedoEnabled,
+                undoCount = undoCount,
+                redoCount = redoCount,
+                lastActionName = lastActionName,
                 appLanguage = appLanguageState,
-                onUndoClick = { viewModel.undo() },
-                onRedoClick = { viewModel.redo() },
+                onUndoClick = {
+                    viewModel.undo()
+                    viewModel.lastActionName.value?.let {
+                        Toast.makeText(context, "↩️ $it", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onRedoClick = {
+                    viewModel.redo()
+                    viewModel.lastActionName.value?.let {
+                        Toast.makeText(context, "↪️ $it", Toast.LENGTH_SHORT).show()
+                    }
+                },
                 onSeekStartClick = {
                     viewModel.selectedSceneIndex.value = 0
                     currentPlaybackTimeMs = 0L
@@ -2702,8 +2770,8 @@ fun VideoEditorScreen(
                     } else {
                         viewModel.isPlaying.value = true
                         currentScene?.let {
-                            if (it.narrationText.isNotBlank() && !viewModel.isPlaceholderNarration(it.narrationText)) {
-                                viewModel.speakText(it.narrationText)
+                            if (shouldSpeakSceneNarration(it)) {
+                                viewModel.playSceneNarration(it)
                             }
                         }
                     }
@@ -2886,6 +2954,30 @@ fun VideoEditorScreen(
                 onSpeedAdjustClick = { idx ->
                     viewModel.selectedSceneIndex.value = idx
                     activeToolSheet = EditorTool.SPEED
+                },
+                onBeginTimelineGesture = { actionName ->
+                    viewModel.beginTimelineGesture(actionName)
+                },
+                onCommitTimelineGesture = {
+                    viewModel.commitTimelineGesture()
+                },
+                onCancelTimelineGesture = {
+                    viewModel.cancelTimelineGesture()
+                },
+                voiceoverTrackName = when {
+                    !latestMasterVoicePath.isNullOrBlank() -> "🎙️ Voiceover: ${File(latestMasterVoicePath!!).name}"
+                    !customMasterVoicePathState.isNullOrBlank() -> "🎙️ Voiceover: ${File(customMasterVoicePathState!!).name}"
+                    activeScenes.any { !it.customVoiceAudioPath.isNullOrBlank() } -> "🎙️ Voiceover: ${activeScenes.count { !it.customVoiceAudioPath.isNullOrBlank() }} Scene Clips Synced"
+                    activeScenes.any { it.narrationText.isNotBlank() } -> "🎙️ AI Voiceover (${viewModel.selectedVoiceName.value})"
+                    else -> null
+                },
+                voiceoverDurationMs = (activeScenes.sumOf { it.durationSeconds } * 1000L),
+                voiceoverVolume = masterVoiceVolState.toFloat(),
+                onVoiceoverTrackClick = {
+                    activeToolSheet = EditorTool.VOICE_FX
+                },
+                onPlayVoiceoverPreview = {
+                    currentScene?.let { viewModel.playSceneNarration(it) }
                 }
             )
 
@@ -3271,43 +3363,53 @@ fun VideoEditorScreen(
                                 Toast.makeText(context, "✨ Dynamic Captions ($stylePreset) applied!".localize(appLanguageState), Toast.LENGTH_SHORT).show()
                             },
                             onTranscribeSceneAudio = { lang, onProg ->
-                                kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-                                    viewModel.transcribeSceneAudio(
-                                        index = selectedSceneIndex,
-                                        preferredLanguage = lang,
-                                        context = context,
-                                        onProgress = onProg
-                                    ) { success, fullTranscript, detectedLang ->
-                                        if (cont.isActive) {
-                                            val scUpdated = viewModel.activeScenes.value.getOrNull(selectedSceneIndex)
-                                            val srt = scUpdated?.srtCaptions ?: ""
-                                            val segs = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.parseSrt(srt)
-                                            cont.resumeWith(Result.success(
-                                                com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.TranscriptionResult(
-                                                    isSuccess = success,
-                                                    fullTranscript = fullTranscript,
-                                                    detectedLanguage = detectedLang,
-                                                    segments = segs,
-                                                    srtContent = srt,
-                                                    errorMessage = if (!success) fullTranscript else null
-                                                )
-                                            ))
+                                kotlinx.coroutines.withTimeoutOrNull(65_000L) {
+                                    kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                                        viewModel.transcribeSceneAudio(
+                                            index = selectedSceneIndex,
+                                            preferredLanguage = lang,
+                                            context = context,
+                                            onProgress = onProg
+                                        ) { success, fullTranscript, detectedLang ->
+                                            if (cont.isActive) {
+                                                val scUpdated = viewModel.activeScenes.value.getOrNull(selectedSceneIndex)
+                                                val srt = scUpdated?.srtCaptions ?: ""
+                                                val segs = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.parseSrt(srt)
+                                                cont.resumeWith(Result.success(
+                                                    com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.TranscriptionResult(
+                                                        isSuccess = success,
+                                                        fullTranscript = fullTranscript,
+                                                        detectedLanguage = detectedLang,
+                                                        segments = segs,
+                                                        srtContent = srt,
+                                                        errorMessage = if (!success) fullTranscript else null
+                                                    )
+                                                ))
+                                            }
                                         }
                                     }
-                                }
+                                } ?: com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.TranscriptionResult(
+                                    isSuccess = false,
+                                    fullTranscript = "",
+                                    detectedLanguage = "",
+                                    segments = emptyList(),
+                                    errorMessage = "Transcription timed out. Please retry."
+                                )
                             },
                             onTranscribeAllVideos = { lang, onProg ->
-                                kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-                                    viewModel.transcribeAllVideoScenes(
-                                        preferredLanguage = lang,
-                                        context = context,
-                                        onProgress = onProg
-                                    ) { success, total ->
-                                        if (cont.isActive) {
-                                            cont.resumeWith(Result.success(Pair(success, total)))
+                                kotlinx.coroutines.withTimeoutOrNull(90_000L) {
+                                    kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                                        viewModel.transcribeAllVideoScenes(
+                                            preferredLanguage = lang,
+                                            context = context,
+                                            onProgress = onProg
+                                        ) { success, total ->
+                                            if (cont.isActive) {
+                                                cont.resumeWith(Result.success(Pair(success, total)))
+                                            }
                                         }
                                     }
-                                }
+                                } ?: Pair(0, 0)
                             },
                             onDismiss = { activeToolSheet = null }
                         )
@@ -6136,11 +6238,12 @@ fun VideoEditorScreen(
                                 }
 
                                 // Dynamic screen subtitle text & viral Karaoke captions
-                                if (sc.subtitle.isNotEmpty()) {
+                                if (sc.subtitle.isNotEmpty() || sc.srtCaptions.isNotEmpty() || (sc.isDynamicCaptionsEnabled && sc.narrationText.isNotEmpty())) {
                                     if (sc.isDynamicCaptionsEnabled) {
                                         DynamicCaptionOverlay(
                                             scene = sc,
                                             isPlaying = isPlaying,
+                                            currentPositionMs = playbackElapsedMs,
                                             modifier = Modifier
                                                 .align(Alignment.BottomCenter)
                                                 .padding(bottom = 36.dp, start = 16.dp, end = 16.dp)
@@ -6148,22 +6251,34 @@ fun VideoEditorScreen(
                                     } else {
                                         val subColor = parseHexColor(sc.subtitleColor.ifEmpty { "#FFFFFF" })
                                         val subBg = parseHexColor(sc.subtitleBgColor.ifEmpty { "#C7000000" })
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.BottomCenter)
-                                                .padding(bottom = 36.dp, start = 20.dp, end = 20.dp)
-                                                .background(subBg, RoundedCornerShape(12.dp))
-                                                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                                                .padding(horizontal = 16.dp, vertical = 10.dp)
-                                        ) {
-                                            Text(
-                                                text = sc.subtitle,
-                                                color = subColor,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                textAlign = TextAlign.Center,
-                                                lineHeight = 20.sp
-                                            )
+
+                                        val curSec = (playbackElapsedMs / 1000f).coerceAtLeast(0f)
+                                        val activeClassicText = remember(sc.srtCaptions, sc.subtitle, curSec, isPlaying) {
+                                            val segs = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.getOrGenerateSegments(sc)
+                                            val match = segs.firstOrNull { curSec >= it.startSec && curSec <= it.endSec }
+                                            if (match != null) match.text
+                                            else if (!isPlaying && curSec < 0.4f) segs.firstOrNull()?.text ?: ""
+                                            else ""
+                                        }
+
+                                        if (activeClassicText.isNotBlank()) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomCenter)
+                                                    .padding(bottom = 36.dp, start = 20.dp, end = 20.dp)
+                                                    .background(subBg, RoundedCornerShape(12.dp))
+                                                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                                            ) {
+                                                Text(
+                                                    text = activeClassicText,
+                                                    color = subColor,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    textAlign = TextAlign.Center,
+                                                    lineHeight = 20.sp
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -6244,7 +6359,7 @@ fun VideoEditorScreen(
                                         if (isPlaying) {
                                             viewModel.stopSpeak()
                                             activeScenes.getOrNull(selectedSceneIndex - 1)?.let {
-                                                if (it.narrationText.isNotBlank() && !viewModel.isPlaceholderNarration(it.narrationText)) {
+                                                if (shouldSpeakSceneNarration(it)) {
                                                     viewModel.speakText(it.narrationText)
                                                 }
                                             }
@@ -6277,7 +6392,7 @@ fun VideoEditorScreen(
                                     } else {
                                         viewModel.isPlaying.value = true
                                         currentScene?.let {
-                                            if (it.narrationText.isNotBlank() && !viewModel.isPlaceholderNarration(it.narrationText)) {
+                                            if (shouldSpeakSceneNarration(it)) {
                                                 viewModel.speakText(it.narrationText)
                                             }
                                         }
@@ -6303,7 +6418,7 @@ fun VideoEditorScreen(
                                         if (isPlaying) {
                                             viewModel.stopSpeak()
                                             activeScenes.getOrNull(selectedSceneIndex + 1)?.let {
-                                                if (it.narrationText.isNotBlank() && !viewModel.isPlaceholderNarration(it.narrationText)) {
+                                                if (shouldSpeakSceneNarration(it)) {
                                                     viewModel.speakText(it.narrationText)
                                                 }
                                             }

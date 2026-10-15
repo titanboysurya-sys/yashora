@@ -110,28 +110,12 @@ fun TrendingCommunityReelsSection(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "🔥 Trending Community Reels",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = EmeraldGreen.copy(alpha = 0.2f),
-                        border = BorderStroke(0.8.dp, EmeraldGreen.copy(alpha = 0.8f))
-                    ) {
-                        Text(
-                            text = "₹0 API Cost",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = EmeraldGreen,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
+                Text(
+                    text = "🔥 Trending Community Reels",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
                 Text(
                     text = "Viral news storyboards & ready-to-use clips from Supabase Cloud",
                     fontSize = 11.sp,

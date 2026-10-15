@@ -103,6 +103,9 @@ fun YouCutTransportBar(
     isPlaying: Boolean,
     canUndo: Boolean,
     canRedo: Boolean,
+    undoCount: Int = 0,
+    redoCount: Int = 0,
+    lastActionName: String? = null,
     appLanguage: String,
     onUndoClick: () -> Unit,
     onRedoClick: () -> Unit,
@@ -123,7 +126,7 @@ fun YouCutTransportBar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Left: Undo / Redo
+        // Left: Undo / Redo with visual badge indicators
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacingSmall)
@@ -135,12 +138,25 @@ fun YouCutTransportBar(
                     .sizeIn(minWidth = 36.dp, minHeight = 36.dp)
                     .testTag("transport_undo_button")
             ) {
-                Icon(
-                    imageVector = Icons.Default.Undo,
-                    contentDescription = "Undo".localize(appLanguage),
-                    tint = if (canUndo) Color.White.copy(alpha = 0.9f) else Color.Gray.copy(alpha = 0.4f),
-                    modifier = Modifier.size(20.dp)
-                )
+                BadgedBox(
+                    badge = {
+                        if (undoCount > 1) {
+                            Badge(
+                                containerColor = Color(0xFF8A2BE2),
+                                contentColor = Color.White
+                            ) {
+                                Text("$undoCount", fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Undo,
+                        contentDescription = "Undo".localize(appLanguage),
+                        tint = if (canUndo) Color.White else Color.Gray.copy(alpha = 0.35f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
             IconButton(
@@ -150,12 +166,25 @@ fun YouCutTransportBar(
                     .sizeIn(minWidth = 36.dp, minHeight = 36.dp)
                     .testTag("transport_redo_button")
             ) {
-                Icon(
-                    imageVector = Icons.Default.Redo,
-                    contentDescription = "Redo".localize(appLanguage),
-                    tint = if (canRedo) Color.White.copy(alpha = 0.9f) else Color.Gray.copy(alpha = 0.4f),
-                    modifier = Modifier.size(20.dp)
-                )
+                BadgedBox(
+                    badge = {
+                        if (redoCount > 1) {
+                            Badge(
+                                containerColor = Color(0xFF00FF87),
+                                contentColor = Color.Black
+                            ) {
+                                Text("$redoCount", fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Redo,
+                        contentDescription = "Redo".localize(appLanguage),
+                        tint = if (canRedo) Color.White else Color.Gray.copy(alpha = 0.35f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
 

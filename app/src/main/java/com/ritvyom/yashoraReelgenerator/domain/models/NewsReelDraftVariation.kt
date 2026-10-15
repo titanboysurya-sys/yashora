@@ -43,7 +43,8 @@ object NewsDraftVariationEngine {
     fun generateVariations(
         news: NewsItem,
         articleImages: List<String>,
-        articleVideos: List<String>
+        articleVideos: List<String>,
+        targetLanguage: String? = null
     ): List<NewsReelDraftVariation> {
         val titleClean = cleanText(news.title)
         val rawContent = if (news.content.isNotBlank() && news.content.length >= news.summary.length) {
@@ -55,10 +56,14 @@ object NewsDraftVariationEngine {
         }
         val rawBody = cleanText(rawContent).ifBlank { cleanText(news.title) }
 
-        val isHindi = news.language.equals("Hindi", ignoreCase = true) ||
-                news.title.any { it in '\u0900'..'\u097F' } ||
-                news.summary.any { it in '\u0900'..'\u097F' } ||
-                news.content.any { it in '\u0900'..'\u097F' }
+        val isHindi = when {
+            targetLanguage?.contains("Hindi", ignoreCase = true) == true -> true
+            targetLanguage?.contains("English", ignoreCase = true) == true -> false
+            else -> news.language.equals("Hindi", ignoreCase = true) ||
+                    news.title.any { it in '\u0900'..'\u097F' } ||
+                    news.summary.any { it in '\u0900'..'\u097F' } ||
+                    news.content.any { it in '\u0900'..'\u097F' }
+        }
 
         // Compile combined source media list (videos prioritized over images)
         val combinedMedia = mutableListOf<String>()
@@ -149,8 +154,8 @@ object NewsDraftVariationEngine {
     }
 
     private fun getMediaForIndex(mediaList: List<String>, index: Int): Pair<String?, String> {
-        if (mediaList.isEmpty()) return Pair(null, "IMAGE")
-        val mediaUrl = mediaList[index % mediaList.size]
+        if (mediaList.isEmpty() || index >= mediaList.size) return Pair(null, "IMAGE")
+        val mediaUrl = mediaList[index]
         val isVid = mediaUrl.endsWith(".mp4", ignoreCase = true) ||
                 mediaUrl.endsWith(".mov", ignoreCase = true) ||
                 mediaUrl.contains("video", ignoreCase = true)
@@ -168,9 +173,9 @@ object NewsDraftVariationEngine {
         isHindi: Boolean
     ): NewsReelDraftVariation {
         val hook = if (isHindi) {
-            "🚨 ब्रेकिंग अपडेट: $title"
+            "बड़ी ख़बर और ताज़ा अपडेट: $title"
         } else {
-            "🚨 BREAKING ALERT: $title"
+            "Breaking Alert: $title"
         }
 
         val sceneTexts = mutableListOf<String>()
@@ -188,19 +193,33 @@ object NewsDraftVariationEngine {
         }
 
         val outro = if (isHindi) {
-            "पूरी रिपोर्ट व हर ताज़ा खबर के लिए जुड़े रहें • ${news.source.ifBlank { "यशोरा न्यूज़" }}"
+            "पूरी रिपोर्ट व हर ताज़ा खबर के लिए जुड़े रहें, ${news.source.ifBlank { "यशोरा न्यूज़" }}।"
         } else {
-            "Stay tuned for live updates • ${news.source.ifBlank { "Yashora News Wire" }}"
+            "Stay tuned for live updates, ${news.source.ifBlank { "Yashora News Wire" }}."
         }
         sceneTexts.add(outro)
 
         val scenes = sceneTexts.mapIndexed { idx, text ->
             val (mediaUrl, mediaType) = getMediaForIndex(mediaList, idx)
             val duration = calculateSceneDuration(text, speedMultiplier = 1.25f)
+            val richPrompt = com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine
+                .generateRichContextualVisualPrompt(
+                    narrationText = text,
+                    style = "Cinematic News",
+                    topicContext = news.title,
+                    sceneNumber = idx + 1,
+                    sceneTotal = sceneTexts.size
+                )
+            val cleanKw = com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine
+                .refineHighPrecisionSearchQuery(
+                    segmentText = text,
+                    proposedQuery = "",
+                    style = "Cinematic News"
+                )
             Scene(
                 sceneNumber = idx + 1,
                 narrationText = text,
-                visualPrompt = text,
+                visualPrompt = richPrompt,
                 durationSeconds = duration,
                 subtitle = text,
                 mediaType = mediaType,
@@ -214,7 +233,11 @@ object NewsDraftVariationEngine {
                 speedMultiplier = 1.25f,
                 speedCurvePreset = "Flash In",
                 transitionType = "Zoom In"
-            )
+            ).apply {
+                if (cleanKw.isNotEmpty()) {
+                    keywords = mutableListOf(cleanKw)
+                }
+            }
         }
 
         val scriptBuilder = StringBuilder()
@@ -293,19 +316,33 @@ object NewsDraftVariationEngine {
         }
 
         val outro = if (isHindi) {
-            "स्रोत: ${news.source.ifBlank { "यशोरा न्यूज़" }} • निष्पक्ष और विश्वसनीय विश्लेषण के लिए फॉलो करें।"
+            "स्रोत: ${news.source.ifBlank { "यशोरा न्यूज़" }}, निष्पक्ष और विश्वसनीय विश्लेषण के लिए फॉलो करें।"
         } else {
-            "Source: ${news.source.ifBlank { "Yashora News Wire" }} • Follow for deep-dive journalism."
+            "Source: ${news.source.ifBlank { "Yashora News Wire" }}, follow for deep-dive journalism."
         }
         sceneTexts.add(outro)
 
         val scenes = sceneTexts.mapIndexed { idx, text ->
             val (mediaUrl, mediaType) = getMediaForIndex(mediaList, idx)
             val duration = calculateSceneDuration(text, speedMultiplier = 1.0f)
+            val richPrompt = com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine
+                .generateRichContextualVisualPrompt(
+                    narrationText = text,
+                    style = "Documentary News",
+                    topicContext = news.title,
+                    sceneNumber = idx + 1,
+                    sceneTotal = sceneTexts.size
+                )
+            val cleanKw = com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine
+                .refineHighPrecisionSearchQuery(
+                    segmentText = text,
+                    proposedQuery = "",
+                    style = "Documentary News"
+                )
             Scene(
                 sceneNumber = idx + 1,
                 narrationText = text,
-                visualPrompt = text,
+                visualPrompt = richPrompt,
                 durationSeconds = duration,
                 subtitle = text,
                 mediaType = mediaType,
@@ -319,7 +356,11 @@ object NewsDraftVariationEngine {
                 speedMultiplier = 1.0f,
                 speedCurvePreset = "Linear",
                 transitionType = "Fade"
-            )
+            ).apply {
+                if (cleanKw.isNotEmpty()) {
+                    keywords = mutableListOf(cleanKw)
+                }
+            }
         }
 
         val scriptBuilder = StringBuilder()
@@ -398,19 +439,33 @@ object NewsDraftVariationEngine {
         }
 
         val outro = if (isHindi) {
-            "इस पूरे मामले पर आपकी क्या राय है? हमें कमेंट में ज़रूर बताएं! • ${news.source.ifBlank { "यशोरा न्यूज़" }}"
+            "इस पूरे मामले पर आपकी क्या राय है? हमें कमेंट में ज़रूर बताएं, ${news.source.ifBlank { "यशोरा न्यूज़" }}।"
         } else {
-            "What are your thoughts on this? Tell us in the comments below! • ${news.source.ifBlank { "Yashora News Wire" }}"
+            "What are your thoughts on this? Tell us in the comments below, ${news.source.ifBlank { "Yashora News Wire" }}."
         }
         sceneTexts.add(outro)
 
         val scenes = sceneTexts.mapIndexed { idx, text ->
             val (mediaUrl, mediaType) = getMediaForIndex(mediaList, idx)
             val duration = calculateSceneDuration(text, speedMultiplier = 1.1f)
+            val richPrompt = com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine
+                .generateRichContextualVisualPrompt(
+                    narrationText = text,
+                    style = "Viral Dynamic News",
+                    topicContext = news.title,
+                    sceneNumber = idx + 1,
+                    sceneTotal = sceneTexts.size
+                )
+            val cleanKw = com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine
+                .refineHighPrecisionSearchQuery(
+                    segmentText = text,
+                    proposedQuery = "",
+                    style = "Viral Dynamic News"
+                )
             Scene(
                 sceneNumber = idx + 1,
                 narrationText = text,
-                visualPrompt = text,
+                visualPrompt = richPrompt,
                 durationSeconds = duration,
                 subtitle = text,
                 mediaType = mediaType,
@@ -424,7 +479,11 @@ object NewsDraftVariationEngine {
                 speedMultiplier = 1.1f,
                 speedCurvePreset = "Montage",
                 transitionType = "Slide Left"
-            )
+            ).apply {
+                if (cleanKw.isNotEmpty()) {
+                    keywords = mutableListOf(cleanKw)
+                }
+            }
         }
 
         val scriptBuilder = StringBuilder()

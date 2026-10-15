@@ -223,6 +223,8 @@ class GeminiService {
             else -> ""
         }
 
+        val cleanTopic = com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer.cleanNewsTopic(topicContext)
+
         val prompt = """
             You are an expert AI video storyboard director. Analyze the following video script and break it down into a highly detailed sequence of visual scenes for short reels.
             
@@ -234,15 +236,17 @@ class GeminiService {
             $publishingStyleGuidelines
             
             OVERALL VIDEO TOPIC / CONTEXT CATEGORY:
-            ${if (topicContext.trim().isEmpty()) "None provided (infer from script text directly)" else topicContext}
+            ${if (cleanTopic.trim().isEmpty()) "None provided (infer from script text directly)" else cleanTopic}
             
             Script:
             $script
             
-            CRITICAL CONTEXTUAL VISUAL ALIGNMENT:
-            - IMPORTANT: You MUST keep all output "visualPrompt" and "imageSearchQuery" closely and explicitly aligned with the OVERALL VIDEO TOPIC / CONTEXT specified above.
-            - If the script mentions abstract ideas or mistakes (e.g. "Page Suspended", "Appeal System", "error", "mistakes", "warning", "copy", "appeals", etc.), do NOT generate generic irrelevant visual queries (such as a paper booklet, a physical court-room appeal, a wooden pen, a couple eating dinner, or generic office supplies).
-            - Instead, ground all visuals beautifully in the stated topic context! (e.g., if the topic is "Facebook page suspension/spam/monetization", output search queries and prompts featuring "social media glitch", "computer alert error", "smartphone social media security block", "suspension warning screen", "sad influencer holding phone with warning icon", etc. so the final video matches perfectly!).
+            CRITICAL CONTEXTUAL & SCENE-SPECIFIC VISUAL ALIGNMENT:
+            - IMPORTANT: Every single scene's "visualPrompt" and "imageSearchQuery" MUST directly depict THAT specific scene's immediate visual action, characters, objects, and narrative moment described in its "narrationText".
+            - The visuals MUST dynamically progress with the unfolding story from scene to scene!
+            - Do NOT repeat the overall topic headline or identical search queries across multiple scenes.
+            - If the script describes news or current affairs, depict the literal events happening in that scene's sentence (e.g. rocket liftoff, heavy rain on flooded street, cheering crowd, scientist in lab, election ballot), and do NOT generate generic news channel names, logos, or studio anchor tags unless explicitly narrated!
+            - If the script mentions abstract ideas or mistakes (e.g. "Page Suspended", "Appeal System", "error", "warning"), ground visuals beautifully in the domain context (e.g., "computer alert error screen", "smartphone security block") so every scene matches its narrative moment.
             
             CRITICAL RECIPE, COOKING & FOOD VISUAL ALIGNMENT:
             - When the script describes a recipe, food preparation, ingredients, cooking techniques, kitchen actions, dishes, or tasting:
@@ -293,6 +297,8 @@ class GeminiService {
             
             CRITICAL LANGUAGE & VOICE SYNTHESIS REQUIREMENT:
             - If the Target Language is "$language" and the input Script is NOT written in that language, you MUST translate the "narrationText" and "subtitle" fields into $language (using the native alphabet/script of $language, e.g., Devanagari script for Hindi, Cyrillic for Russian, etc.).
+            - STRICT UNILINGUAL CONSISTENCY: The "narrationText" MUST be 100% in the selected language ($language). NEVER mix languages. If target language is Hindi, do NOT mix English words into Hindi sentences. Write 100% in pure natural Hindi using Devanagari script so that text-to-speech voiceover pronounces everything accurately without any awkward English mixing. If language is English, write 100% in pure English.
+            - FULL NARRATION COMPLETION: Every single scene MUST have complete, unabridged narrationText covering all words of that scene. Never leave narrationText blank or cut off mid-sentence.
             - Ensure the translations are elegant, high-impact, natural, and perfectly rhythmic for narration in a professional short video.
             - Ensure the "visualPrompt" remains in descriptive, highly colorful ENGLISH so it can map to professional background photographs (include style hints corresponding to $style).
             - VERY IMPORTANT: Do NOT include any decorative symbols, emojis, hashtags, markdown formatting (such as asterisks `*` or underscores `_`), or consecutive dots / ellipses (such as `...` or `......`) inside the "narrationText" or "subtitle" fields. Always use clean, native language letters and words with standard periods/commas for natural pauses. Never use symbols or dots that would confuse the Text-to-Speech synthesizer or be read aloud as "dot dot dot".
@@ -577,15 +583,36 @@ class GeminiService {
                     val deferredList = (0 until totalScenesToProcess).map { i ->
                         async(Dispatchers.IO) {
                             val obj = scenesJson.optJSONObject(i) ?: return@async null
-                            val visPrompt = obj.optString("visualPrompt", "A scene depicting ${obj.optString("narrationText")}")
+                            val rawVisPrompt = obj.optString("visualPrompt", "")
                             val rawImgSearchQuery = obj.optString("imageSearchQuery", "")
                             val narrText = obj.optString("narrationText", "")
                             val subText = obj.optString("subtitle", "")
-                            val scriptSegment = if (narrText.isNotBlank()) narrText else subText
+                            val scriptSegment: String = if (narrText.isNotBlank()) narrText else subText
+
+                            val isBrokenPrompt = rawVisPrompt.isBlank() ||
+                                rawVisPrompt.length < 25 ||
+                                rawVisPrompt.any { ch -> ch in '\u0900'..'\u097F' } ||
+                                rawVisPrompt.equals(scriptSegment, ignoreCase = true) ||
+                                rawVisPrompt.lowercase().contains("vibrant, crime") ||
+                                rawVisPrompt.lowercase().contains("crime, vibrant") ||
+                                rawVisPrompt.lowercase().trim() in setOf("crime", "vibrant", "police officer", "courtroom gavel", "vibrant scenic visual", "cinematic narrative scene", "news studio television broadcast") ||
+                                rawVisPrompt.split("\\s+".toRegex()).size <= 3
+
+                            val visPrompt = if (isBrokenPrompt) {
+                                ScriptSemanticAnalysisEngine.generateRichContextualVisualPrompt(
+                                    narrationText = scriptSegment,
+                                    style = style,
+                                    topicContext = topicContext,
+                                    sceneNumber = i + 1,
+                                    sceneTotal = totalScenesToProcess
+                                )
+                            } else {
+                                rawVisPrompt
+                            }
                             
                             // HIGH PRECISION FEEDBACK LOOP: Parse script segment tokens and validate query against real stock tags
                             val imgSearchQuery = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
-                                segmentText = scriptSegment.ifEmpty { visPrompt },
+                                segmentText = if (scriptSegment.isNotBlank()) scriptSegment else visPrompt,
                                 proposedQuery = rawImgSearchQuery,
                                 style = style
                             )
@@ -602,7 +629,7 @@ class GeminiService {
                                 for (idx in 0 until kwsJson.length()) {
                                     val rawKw = kwsJson.optString(idx)
                                     val kw = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
-                                        segmentText = scriptSegment.ifEmpty { visPrompt },
+                                        segmentText = if (scriptSegment.isNotBlank()) scriptSegment else visPrompt,
                                         proposedQuery = rawKw,
                                         style = style
                                     )
@@ -1413,11 +1440,13 @@ class GeminiService {
             val chosenAngle = cameraAngles[index % cameraAngles.size]
             val chosenLighting = lightingAtmospheres[index % lightingAtmospheres.size]
             
-            // Rich multi-sentence prompt directly referencing the sentence, camera angle, lighting, and style
-            val visPrompt = "A cinematic sequence in $style style capturing: \"$cleanSentence\". " +
-                "$chosenAngle focusing on $searchQuery. " +
-                "Rendered with $chosenLighting, highly detailed textures, and dramatic depth of field. " +
-                "Immersive 4K visual composition perfectly matching the voiceover narration."
+            // Rich multi-sentence prompt in pure English directly matching the voiceover narration, subject, angle, and lighting
+            val visPrompt = ScriptSemanticAnalysisEngine.generateRichContextualVisualPrompt(
+                narrationText = cleanSentence,
+                style = style,
+                sceneNumber = sceneNum,
+                sceneTotal = sentences.size
+            )
             
             val processedSentence = translateLocalToLanguage(cleanSentence, language)
             
@@ -1787,7 +1816,8 @@ class GeminiService {
             else -> "all"
         }
 
-        val queryText = query.replace(Regex("[^\\p{L}\\p{N}\\s]"), "").trim()
+        val rawQuery = query.replace(Regex("[^\\p{L}\\p{N}\\s]"), "").trim()
+        val queryText = ScriptSemanticAnalysisEngine.ensureEnglishSearchQuery(rawQuery).replace(Regex("[^a-zA-Z0-9\\s]"), " ").trim()
         if (queryText.isEmpty()) {
             return if (enableSceneFallback) getThematicSceneFallbackImage(query, sceneNum, aspectRatio, alreadyUsedUrls) else ""
         }
@@ -2122,7 +2152,8 @@ class GeminiService {
             else -> "square"
         }
 
-        val queryText = query.replace(Regex("[^\\p{L}\\p{N}\\s]"), "").trim()
+        val rawQuery = query.replace(Regex("[^\\p{L}\\p{N}\\s]"), "").trim()
+        val queryText = ScriptSemanticAnalysisEngine.ensureEnglishSearchQuery(rawQuery).replace(Regex("[^a-zA-Z0-9\\s]"), " ").trim()
         if (queryText.isEmpty()) {
             return if (enableSceneFallback) {
                 if (searchVideo) getThematicSceneFallbackVideo(query, sceneNum, alreadyUsedUrls)
@@ -2285,7 +2316,8 @@ class GeminiService {
             "56218545-6d93003a94318db8a7f29dba1"
         ).distinct()
 
-        val queryText = query.replace(Regex("[^\\p{L}\\p{N}\\s]"), "").trim()
+        val rawQuery = query.replace(Regex("[^\\p{L}\\p{N}\\s]"), "").trim()
+        val queryText = ScriptSemanticAnalysisEngine.ensureEnglishSearchQuery(rawQuery).replace(Regex("[^a-zA-Z0-9\\s]"), " ").trim()
         if (queryText.isEmpty()) {
             return if (enableSceneFallback) getThematicSceneFallbackVideo(query, sceneNum, alreadyUsedUrls) else ""
         }
@@ -2669,6 +2701,8 @@ class GeminiService {
 
             MANDATORY RULES:
             - Provide ONLY the narrator speech text (narration text) in the native alphabet script of $language (e.g. use Devanagari script for Hindi, Cyrillic for Russian, native script for Urdu, Tamil, German, etc.).
+            - STRICT UNILINGUAL ENFORCEMENT: Write 100% purely in $language. If $language is Hindi, write entirely in pure natural Hindi using Devanagari script (देवनागरी लिपि). NEVER mix random English words into Hindi sentences. Every word must be authentic Hindi so that voiceover TTS engines pronounce everything naturally without awkward code-mixing. If English, write 100% in pure English.
+            - FULL NARRATION COVERAGE: Provide complete voiceover narration for all facts and text. Do not cut off, omit, or leave placeholder gaps.
             - Do NOT include any scene descriptions, camera instructions, slide titles, subtitles, "Scene 1:" indicators, brackets, or other metadata annotations.
             - Start with a powerful "hook" in the very first sentence to stop users from scrolling.
             - The text must flow naturally and be rhythmic, ready to be copied/pasted directly into a text-to-speech voice generator.

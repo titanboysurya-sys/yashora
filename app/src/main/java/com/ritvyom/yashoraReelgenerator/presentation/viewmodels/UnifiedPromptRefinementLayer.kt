@@ -38,6 +38,88 @@ object UnifiedPromptRefinementLayer {
     )
 
     /**
+     * Cleans raw news headlines and article topics into concise, high-signal core topics.
+     * Strips clickbait prefixes ("Viral Video:", "Breaking News:"), news channel tags
+     * ("- NDTV", "| Aaj Tak", "- BBC News"), punctuation, and media clutter.
+     */
+    fun cleanNewsTopic(rawTopic: String): String {
+        if (rawTopic.isBlank()) return ""
+        var cleaned = rawTopic.trim()
+
+        // Strip common news organization and source branding suffixes
+        val sourcePatterns = listOf(
+            Regex("(?i)\\s*[-|–—]\\s*(NDTV|Aaj\\s*Tak|ABP\\s*News|Dainik\\s*Bhaskar|India\\s*Today|BBC(\\s*Hindi)?|Zee\\s*News|News18|Republic(\\s*Bharat)?|Times\\s*of\\s*India|Hindustan\\s*Times|The\\s*Hindu|Amar\\s*Ujala|Navbharat\\s*Times|Live\\s*Hindustan|News24|PTI|ANI|Reuters|AP|AFP|OneIndia|CNBC|Bloomberg)[^\\n]*$"),
+            Regex("(?i)\\s*\\|\\s*[^|]+$"),
+            Regex("(?i)\\s*[-–—]\\s*[^–—-]+$")
+        )
+        for (pattern in sourcePatterns) {
+            val stripped = cleaned.replace(pattern, "").trim()
+            if (stripped.length >= 4) {
+                cleaned = stripped
+                break
+            }
+        }
+
+        // Strip news alert prefixes
+        cleaned = cleaned.replace(
+            Regex("(?i)^(\\s*(Breaking(\\s*News|\\s*Alert)?|Viral(\\s*News|\\s*Video)?|Big\\s*Breaking|Trending|Exclusive|Special\\s*Report|Live\\s*Updates?|Watch|Top\\s*News|Headline|ताजा\\s*खबर|बड़ी\\s*खबर|ब्रेकिंग(\\s*न्यूज)?|वायरल(\\s*वीडियो)?|खास\\s*रिपोर्ट|लाइव|एक्सक्लूसिव)\\s*[:\\-–—|!]+)+"),
+            ""
+        ).trim()
+
+        // Strip leading/trailing symbols, brackets, and emojis
+        cleaned = cleaned.replace(Regex("^[\\p{Punct}\\s\\p{So}\\p{Sk}]+"), "")
+            .replace(Regex("[\\p{Punct}\\s\\p{So}\\p{Sk}]+$"), "")
+            .replace(Regex("[🚨⚡🎬💥🔴📰✨📢🔥]"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+        return cleaned
+    }
+
+    /**
+     * Comprehensively strips scriptwriting cue tags, markdown artifacts, emojis,
+     * and news structure labels (e.g. "1. Hook:", "2. Core Story:", "[Scene 1 - Headline Alert]")
+     * to produce 100% pure, natural narrative voiceover prose for Text-to-Speech and semantic visual analysis.
+     */
+    fun cleanScriptText(rawScript: String): String {
+        val trimmed = rawScript.trim()
+        if (trimmed.isEmpty()) return ""
+
+        var s = trimmed
+        // 1. Remove bracketed scene/visual tags [Scene 1: ...], [Visual: ...], [Hook: ...]
+        s = s.replace(
+            Regex("(?i)\\[(Scene\\s*\\d+|Hook|Headline|Intro|Core\\s*Story|Story\\s*Details|Fact\\s*\\d*|Outro|CTA|Visual|Narration|Voiceover|Audio|Music|SFX|Sound|Lighting|Camera)[^\\]]*\\]"),
+            " "
+        )
+
+        // 2. Remove parenthetical visual/director cue notes (Visual: ...), (Cut to ...)
+        s = s.replace(
+            Regex("(?i)\\((Visual|Camera|Cut\\s*to|Audio|Music|SFX|Sound|Hook|Scene\\s*\\d+)[^\\)]*\\)"),
+            " "
+        )
+
+        // 3. Remove numbered/bulleted news section headers like "**1. Hook:**", "2. Core Story Facts:", "1. हुक:"
+        s = s.replace(
+            Regex("(?mi)^(?:\\[\\s*)?(?:\\*\\*)?(?:\\d+[.:)]\\s*)?(Hook|Headline|Intro|Core\\s*Story|Story\\s*Facts|Key\\s*Facts|Facts|Impact|Closing\\s*Question|Question|Outro|CTA|Call\\s*to\\s*action|Visual|Voiceover|Narration|हुक|मुख्य\\s*खबर|खबर|प्रभाव|सवाल|निष्कर्ष|अलर्ट|ब्रेकिंग)(?:\\s*\\([^)]*\\))?[:\\-*_\\s]+(?:\\*\\*)?"),
+            " "
+        )
+
+        // 4. Strip leftover markdown artifacts
+        s = s.replace(Regex("\\*\\*|__|[*_#]"), "")
+
+        // 5. Strip news emojis (🚨, 🎬, etc.)
+        s = s.replace(Regex("[🚨⚡🎬💥🔴📰✨📢🔥]"), "")
+
+        // 6. Clean consecutive dots / ellipses
+        s = s.replace(Regex("\\.{2,}"), ".")
+
+        // 7. Normalize whitespace
+        s = s.replace(Regex("\\s+"), " ").trim()
+
+        return s
+    }
+
+    /**
      * Pre-analysis phase: Inspects raw user narrative script, extracts scene boundaries,
      * strips narration fluff, and builds decoupled visual metadata for each scene segment
      * before passing to the Gemini API.
@@ -57,13 +139,8 @@ object UnifiedPromptRefinementLayer {
             )
         }
 
-        // 1. Decouple script narration from scriptwriting cue tags [Visual: ...], [Hook: ...], [Narration: ...]
-        val cleanScript = trimmed
-            .replace(Regex("(?i)\\[(Hook|Intro|Scene\\s*\\d+|Outro|CTA|Visual|Narration|Voiceover|Audio|Music|SFX|Sound|Lighting|Camera)[^\\]]*\\]"), " ")
-            .replace(Regex("(?i)^(Hook|Intro|Scene\\s*\\d+|Outro|CTA|Visual|Narration|Voiceover):", RegexOption.MULTILINE), " ")
-            .replace(Regex("\\*\\*|__|[*_#]"), "")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+        // 1. Decouple script narration from scriptwriting cue tags, emojis, and news labels
+        val cleanScript = cleanScriptText(trimmed)
 
         // 2. Break script into sentence segments for strict scene mapping
         val sentenceRegex = Regex("(?<=[?!।|\n])\\s+|(?<=\\.)\\s+(?=[A-Za-z\\u0900-\\u097F]|\\$)")
@@ -90,7 +167,8 @@ object UnifiedPromptRefinementLayer {
             "Moody chiaroscuro lighting with sharp specular highlights"
         )
 
-        val combinedContext = if (topicContext.isNotBlank()) topicContext else cleanScript
+        val cleanTopic = cleanNewsTopic(topicContext)
+        val domainContext = if (cleanTopic.isNotBlank()) cleanTopic else cleanScript.take(60)
 
         rawSentences.forEachIndexed { index, sentence ->
             val sceneNum = index + 1
@@ -118,10 +196,14 @@ object UnifiedPromptRefinementLayer {
             val subject = semanticAnalysis.criticalEntity ?: primarySearchKeyword.ifBlank { "Subject action" }
             val action = if (sentence.length > 50) sentence.take(50).trim() else sentence
 
-            val visualPrompt = "A sharp, cinematic $style sequence capturing: '$sentence'. " +
-                    "$angle focusing precisely on $primarySearchKeyword. " +
-                    "Illuminated with $lighting. " +
-                    "Ultra-clean 4K visual composition grounded in '$combinedContext'."
+            val topicAnchor = if (cleanTopic.isNotBlank()) "Contextually anchored in '$cleanTopic'. " else ""
+            val visualPrompt = ScriptSemanticAnalysisEngine.generateRichContextualVisualPrompt(
+                narrationText = sentence,
+                style = style,
+                topicContext = cleanTopic,
+                sceneNumber = sceneNum,
+                sceneTotal = rawSentences.size
+            )
 
             val meta = SceneVisualMetadata(
                 visualKeywords = keywordList,
@@ -144,10 +226,13 @@ object UnifiedPromptRefinementLayer {
         // 3. Build explicit Visual Directives Prompt Chunk to inject into Gemini prompt
         val visualDirectivesBuilder = StringBuilder()
         visualDirectivesBuilder.appendLine("UNIFIED PROMPT REFINEMENT SPECIFICATION (STRICT SCENE-TO-VISUAL DECOUPLING):")
-        visualDirectivesBuilder.appendLine("- RULE 1 (Decouple Spoken Script): Under 'narrationText', write ONLY the spoken voiceover in the target language. Zero scene brackets, zero camera cues.")
+        visualDirectivesBuilder.appendLine("- RULE 1 (Decouple Spoken Script): Under 'narrationText', write ONLY the spoken voiceover in the target language. Zero scene brackets, zero camera cues, zero section labels (e.g. no 'Hook:', '1.', 'Scene 1:').")
         visualDirectivesBuilder.appendLine("- RULE 2 (Explicit Visual Metadata): For every scene, generate explicit visual metadata fields: 'visualPrompt', 'imageSearchQuery', 'keywords'.")
         visualDirectivesBuilder.appendLine("- RULE 3 (Concrete Keywords & Lighting): Every 'imageSearchQuery' MUST contain 2 to 4 concrete English nouns and action verbs (NO abstract fluff like 'cinematic', 'atmospheric', 'moody', 'scene').")
-        visualDirectivesBuilder.appendLine("- RULE 4 (Ground in Topic): All visual keywords must be directly grounded in the topic context: '$combinedContext'.")
+        visualDirectivesBuilder.appendLine("- RULE 4 (Scene-Specific Narrative Action): Every scene's visualPrompt and imageSearchQuery MUST depict THAT specific scene's immediate visual action, subjects, and setting described in its narrationText, progressing step by step with the narrative. Do NOT repeat generic headline or media channel words across scenes!")
+        if (cleanTopic.isNotBlank()) {
+            visualDirectivesBuilder.appendLine("- RULE 5 (Core Topic Anchor): Contextually align the visuals with the subject domain '$cleanTopic' without using generic news studio or anchor tags unless explicitly narrated.")
+        }
 
         return RefinementPlan(
             cleanedScript = cleanScript,
@@ -168,24 +253,45 @@ object UnifiedPromptRefinementLayer {
     ): List<Scene> {
         if (scenes.isEmpty()) return emptyList()
 
+        val cleanTopic = cleanNewsTopic(topicContext)
+
+        val bannedNewsFluff = setOf(
+            "ndtv", "aaj tak", "abp news", "bbc", "news18", "zee news", "republic",
+            "breaking news broadcast", "news studio television broadcast", "news anchor",
+            "courtroom gavel", "police officer", "news headline", "viral news"
+        )
+
         return scenes.mapIndexed { index, scene ->
             val narration = scene.narrationText.ifEmpty { scene.subtitle }
             val existingPrompt = scene.visualPrompt
 
             // Sanitize narrative text from any accidental cue tags or ellipses
-            val cleanNarr = narration
-                .replace(Regex("(?i)\\[(Hook|Intro|Scene\\s*\\d+|Outro|CTA|Visual|Narration|Voiceover)[^\\]]*\\]"), "")
-                .replace(Regex("(?i)^(Hook|Intro|Scene\\s*\\d+|Outro|CTA|Visual|Narration|Voiceover):", RegexOption.MULTILINE), "")
-                .replace(Regex("\\.{3,}"), ".")
-                .trim()
+            val cleanNarr = cleanScriptText(narration)
 
             // 1. Refine concrete stock search query from narrative tokens
             val initialProposed = scene.keywords.firstOrNull() ?: ""
-            val refinedPrimaryQuery = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
+            var refinedPrimaryQuery = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
                 segmentText = cleanNarr.ifEmpty { existingPrompt },
                 proposedQuery = initialProposed,
                 style = style
             )
+
+            // Discard contaminated or generic news channel tags if narrative doesn't actually describe them
+            val narrLower = cleanNarr.lowercase()
+            if (refinedPrimaryQuery.lowercase() in bannedNewsFluff ||
+                bannedNewsFluff.any { refinedPrimaryQuery.lowercase().contains(it) }
+            ) {
+                val hasActualAnchor = narrLower.contains("studio") || narrLower.contains("anchor") || narrLower.contains("रिपोर्टर")
+                val hasActualCourt = narrLower.contains("court") || narrLower.contains("judge") || narrLower.contains("अदालत") || narrLower.contains("कोर्ट")
+                val hasActualPolice = narrLower.contains("police") || narrLower.contains("पुलिस")
+                if (!hasActualAnchor && !hasActualCourt && !hasActualPolice) {
+                    refinedPrimaryQuery = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
+                        segmentText = cleanNarr.ifEmpty { existingPrompt },
+                        proposedQuery = "",
+                        style = style
+                    )
+                }
+            }
 
             // 2. Refine all secondary keywords to eliminate banned fluff
             val cleanKeywords = mutableListOf<String>()
@@ -194,22 +300,54 @@ object UnifiedPromptRefinementLayer {
             }
 
             scene.keywords.forEach { rawKw ->
-                val refined = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
+                var refined = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
                     segmentText = cleanNarr.ifEmpty { existingPrompt },
                     proposedQuery = rawKw,
                     style = style
                 )
+                if (bannedNewsFluff.any { refined.lowercase().contains(it) }) {
+                    refined = ""
+                }
                 if (refined.isNotEmpty() && !cleanKeywords.contains(refined)) {
                     cleanKeywords.add(refined)
                 }
             }
 
             if (cleanKeywords.isEmpty()) {
-                cleanKeywords.add(refinedPrimaryQuery.ifEmpty { "vibrant cinematic visual" })
+                val derivedTokens = ScriptSemanticAnalysisEngine.refineKeywords(cleanNarr)
+                if (derivedTokens.isNotEmpty()) {
+                    cleanKeywords.addAll(derivedTokens.take(3))
+                } else if (refinedPrimaryQuery.isNotBlank() && refinedPrimaryQuery !in bannedNewsFluff) {
+                    cleanKeywords.add(refinedPrimaryQuery)
+                } else {
+                    cleanKeywords.add("narrative visual scene")
+                }
             }
 
-            // 3. Extract or synthesize lighting & camera composition
-            val promptLower = existingPrompt.lowercase()
+            // 3. Guarantee high-quality voiceover-matched visual prompt in fluent English
+            val isBrokenOrGenericPrompt = existingPrompt.isBlank() ||
+                existingPrompt.length < 25 ||
+                existingPrompt.any { it in '\u0900'..'\u097F' } ||
+                existingPrompt.equals(cleanNarr, ignoreCase = true) ||
+                existingPrompt.lowercase().contains("vibrant, crime") ||
+                existingPrompt.lowercase().contains("crime, vibrant") ||
+                existingPrompt.lowercase().trim() in setOf("crime", "vibrant", "police officer", "courtroom gavel", "vibrant scenic visual", "cinematic narrative scene", "news studio television broadcast") ||
+                existingPrompt.split("\\s+".toRegex()).size <= 3
+
+            val targetVisualPrompt = if (isBrokenOrGenericPrompt) {
+                ScriptSemanticAnalysisEngine.generateRichContextualVisualPrompt(
+                    narrationText = cleanNarr,
+                    style = style,
+                    topicContext = cleanTopic,
+                    sceneNumber = index + 1,
+                    sceneTotal = scenes.size
+                )
+            } else {
+                existingPrompt
+            }
+
+            // 4. Extract or synthesize lighting & camera composition
+            val promptLower = targetVisualPrompt.lowercase()
             val detectedLighting = when {
                 promptLower.contains("golden hour") -> "Golden hour warm illumination"
                 promptLower.contains("studio lighting") || promptLower.contains("studio") -> "High-key studio lighting with soft shadows"
@@ -227,20 +365,21 @@ object UnifiedPromptRefinementLayer {
                 else -> "Centered subject medium framing"
             }
 
-            // 4. Build unified SceneVisualMetadata
-            val visualMeta = scene.visualMetadata ?: SceneVisualMetadata(
+            // 5. Build unified SceneVisualMetadata
+            val visualMeta = SceneVisualMetadata(
                 visualKeywords = cleanKeywords,
                 lighting = detectedLighting,
                 composition = detectedComposition,
                 action = cleanNarr.take(60),
-                subject = cleanKeywords.firstOrNull() ?: topicContext.ifBlank { "Subject" },
-                visualPrompt = existingPrompt
+                subject = cleanKeywords.firstOrNull() ?: cleanTopic.ifBlank { "Subject" },
+                visualPrompt = targetVisualPrompt
             )
 
             // Update scene properties with strictly decoupled narrative and refined metadata
             scene.copy(
                 narrationText = cleanNarr.ifEmpty { scene.narrationText },
-                subtitle = scene.subtitle.replace(Regex("\\.{3,}"), ".").trim()
+                visualPrompt = targetVisualPrompt,
+                subtitle = scene.subtitle.replace(Regex("\\.{2,}"), ".").trim()
             ).apply {
                 keywords = cleanKeywords
                 visualMetadata = visualMeta

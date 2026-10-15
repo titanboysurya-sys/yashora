@@ -173,35 +173,25 @@ fun HomeScreen(
     var showDirectEditChooserSheet by remember { mutableStateOf(false) }
 
     var pendingImportUris by remember { mutableStateOf<List<String>>(emptyList()) }
-    var showAutoCaptionImportDialog by remember { mutableStateOf(false) }
     var directProjectLoadingPhaseText by remember { mutableStateOf("Loading Editor...") }
-    var selectedImportCaptionLang by remember { mutableStateOf("Auto") }
 
     val visualMediaPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
         if (!uris.isNullOrEmpty()) {
             val uriStrings = uris.map { it.toString() }
-            val hasVideo = uriStrings.any { uriStr ->
-                com.ritvyom.yashoraReelgenerator.presentation.utils.ReelVideoCompiler.isVideoPath(context, uriStr)
-            }
-            if (hasVideo) {
-                pendingImportUris = uriStrings
-                showAutoCaptionImportDialog = true
-            } else {
-                isCreatingDirectProject = true
-                directProjectLoadingPhaseText = "Loading Editor..."
-                viewModel.createDirectEditProject(
-                    title = "Photo Project #${System.currentTimeMillis() % 1000}",
-                    uris = uriStrings,
-                    context = context,
-                    autoTranscribeCaptions = false,
-                    onComplete = {
-                        isCreatingDirectProject = false
-                        onDirectEditProjectCreated()
-                    }
-                )
-            }
+            isCreatingDirectProject = true
+            directProjectLoadingPhaseText = "Loading Editor..."
+            viewModel.createDirectEditProject(
+                title = "Video Project #${System.currentTimeMillis() % 1000}",
+                uris = uriStrings,
+                context = context,
+                autoTranscribeCaptions = false,
+                onComplete = {
+                    isCreatingDirectProject = false
+                    onDirectEditProjectCreated()
+                }
+            )
         }
     }
 
@@ -210,26 +200,18 @@ fun HomeScreen(
     ) { uris ->
         if (!uris.isNullOrEmpty()) {
             val uriStrings = uris.map { it.toString() }
-            val hasVideo = uriStrings.any { uriStr ->
-                com.ritvyom.yashoraReelgenerator.presentation.utils.ReelVideoCompiler.isVideoPath(context, uriStr)
-            }
-            if (hasVideo) {
-                pendingImportUris = uriStrings
-                showAutoCaptionImportDialog = true
-            } else {
-                isCreatingDirectProject = true
-                directProjectLoadingPhaseText = "Loading Editor..."
-                viewModel.createDirectEditProject(
-                    title = "Direct Cut #${System.currentTimeMillis() % 1000}",
-                    uris = uriStrings,
-                    context = context,
-                    autoTranscribeCaptions = false,
-                    onComplete = {
-                        isCreatingDirectProject = false
-                        onDirectEditProjectCreated()
-                    }
-                )
-            }
+            isCreatingDirectProject = true
+            directProjectLoadingPhaseText = "Loading Editor..."
+            viewModel.createDirectEditProject(
+                title = "Direct Cut #${System.currentTimeMillis() % 1000}",
+                uris = uriStrings,
+                context = context,
+                autoTranscribeCaptions = false,
+                onComplete = {
+                    isCreatingDirectProject = false
+                    onDirectEditProjectCreated()
+                }
+            )
         } else {
             isCreatingDirectProject = true
             directProjectLoadingPhaseText = "Loading Editor..."
@@ -666,51 +648,72 @@ fun HomeScreen(
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                                    shape = RoundedCornerShape(14.dp),
+                                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(16.dp),
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                                     border = BorderStroke(1.dp, GlowingPurple.copy(alpha = 0.35f))
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            .padding(horizontal = 14.dp, vertical = 12.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                            Icon(
-                                                imageVector = Icons.Default.RecordVoiceOver,
-                                                contentDescription = null,
-                                                tint = GlowingPurple,
-                                                modifier = Modifier.size(24.dp)
-                                            )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .background(GlowingPurple.copy(alpha = 0.18f), CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.RecordVoiceOver,
+                                                    contentDescription = null,
+                                                    tint = GlowingPurple,
+                                                    modifier = Modifier.size(22.dp)
+                                                )
+                                            }
                                             Spacer(modifier = Modifier.width(10.dp))
                                             Column {
                                                 Text(
                                                     text = "AI Voice Studio".localize(appLanguageState),
                                                     fontWeight = FontWeight.Bold,
-                                                    fontSize = 13.sp,
-                                                    color = MaterialTheme.colorScheme.onSurface
+                                                    fontSize = 14.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                                 Text(
                                                     text = "ElevenLabs Neural AI & Device TTS".localize(appLanguageState),
-                                                    fontSize = 10.sp,
-                                                    color = SecondaryMuted
+                                                    fontSize = 11.sp,
+                                                    color = SecondaryMuted,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                             }
                                         }
 
+                                        Spacer(modifier = Modifier.width(8.dp))
+
                                         Button(
                                             onClick = { onOpenVoiceProvider?.invoke() },
-                                            shape = RoundedCornerShape(8.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                            modifier = Modifier.height(32.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                            modifier = Modifier.height(36.dp),
                                             colors = ButtonDefaults.buttonColors(containerColor = GlowingPurple)
                                         ) {
-                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("New Voice".localize(appLanguageState), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                text = "New Voice".localize(appLanguageState),
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1
+                                            )
                                         }
                                     }
                                 }
@@ -807,6 +810,9 @@ fun HomeScreen(
                                             }
                                         )
                                     }
+                                }
+                                item {
+                                    Spacer(modifier = Modifier.height(110.dp))
                                 }
                             }
                         } else {
@@ -1031,6 +1037,9 @@ fun HomeScreen(
                                             }
                                         )
                                     }
+                                    item {
+                                        Spacer(modifier = Modifier.height(110.dp))
+                                    }
                                 }
                             }
                         } else {
@@ -1130,243 +1139,41 @@ fun HomeScreen(
     // Direct Project Builder Loading Screen Overlay
     if (isCreatingDirectProject) {
         androidx.compose.ui.window.Dialog(
-            onDismissRequest = {},
-            properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+            onDismissRequest = { isCreatingDirectProject = false },
+            properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = false)
         ) {
             Card(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = CardBg),
                 border = BorderStroke(1.dp, GlowingPurple),
-                modifier = Modifier.size(160.dp)
+                modifier = Modifier
+                    .widthIn(min = 220.dp, max = 290.dp)
+                    .wrapContentHeight()
             ) {
                 Column(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     PremiumCircularLoader(sizeDp = 48)
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = directProjectLoadingPhaseText.localize(appLanguageState),
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                }
-            }
-        }
-    }
-
-    if (showAutoCaptionImportDialog && pendingImportUris.isNotEmpty()) {
-        ModalBottomSheet(
-            onDismissRequest = {
-                // If dismissed without choosing, proceed to editor directly
-                showAutoCaptionImportDialog = false
-                isCreatingDirectProject = true
-                directProjectLoadingPhaseText = "Loading Editor..."
-                viewModel.createDirectEditProject(
-                    title = "Video Project #${System.currentTimeMillis() % 1000}",
-                    uris = pendingImportUris,
-                    context = context,
-                    autoTranscribeCaptions = false,
-                    onComplete = {
-                        isCreatingDirectProject = false
-                        pendingImportUris = emptyList()
-                        onDirectEditProjectCreated()
-                    }
-                )
-            },
-            containerColor = Color(0xFF14141E),
-            tonalElevation = 8.dp
-        ) {
-            val importScrollState = rememberScrollState()
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
-                    .verticalScroll(importScrollState)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF00FF87).copy(alpha = 0.2f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ClosedCaption,
-                                contentDescription = null,
-                                tint = Color(0xFF00FF87),
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Auto-Caption Video Voice 🎙️".localize(appLanguageState),
-                                color = Color.White,
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Listen to video audio & transcribe speech into captions".localize(appLanguageState),
-                                color = Color.LightGray,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-
-                    IconButton(onClick = {
-                        showAutoCaptionImportDialog = false
-                        isCreatingDirectProject = true
-                        directProjectLoadingPhaseText = "Loading Editor..."
-                        viewModel.createDirectEditProject(
-                            title = "Video Project #${System.currentTimeMillis() % 1000}",
-                            uris = pendingImportUris,
-                            context = context,
-                            autoTranscribeCaptions = false,
-                            onComplete = {
-                                isCreatingDirectProject = false
-                                pendingImportUris = emptyList()
-                                onDirectEditProjectCreated()
-                            }
-                        )
-                    }) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF1B152B),
-                    border = BorderStroke(1.dp, GlowingPurple.copy(alpha = 0.4f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    TextButton(
+                        onClick = { isCreatingDirectProject = false }
+                    ) {
                         Text(
-                            text = "Speech Language in Video".localize(appLanguageState),
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
+                            text = "Cancel".localize(appLanguageState),
+                            color = Color.LightGray,
+                            fontSize = 12.sp
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            listOf("Auto", "Hindi", "Hinglish", "English").forEach { lang ->
-                                val isSel = selectedImportCaptionLang == lang
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isSel) Color(0xFF00FF87) else Color(0xFF261F38),
-                                    border = BorderStroke(1.dp, if (isSel) Color(0xFF00FF87) else Color.White.copy(alpha = 0.15f)),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { selectedImportCaptionLang = lang }
-                                ) {
-                                    Text(
-                                        text = lang,
-                                        color = if (isSel) Color.Black else Color.White,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.padding(vertical = 6.dp)
-                                    )
-                                }
-                            }
-                        }
                     }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Primary Action Button: Transcribe and Add Captions
-                Button(
-                    onClick = {
-                        val urisToProcess = pendingImportUris
-                        showAutoCaptionImportDialog = false
-                        isCreatingDirectProject = true
-                        directProjectLoadingPhaseText = "🎙️ Listening to video & transcribing speech..."
-                        viewModel.createDirectEditProject(
-                            title = "Video Project #${System.currentTimeMillis() % 1000}",
-                            uris = urisToProcess,
-                            context = context,
-                            autoTranscribeCaptions = true,
-                            transcribeLanguage = selectedImportCaptionLang,
-                            onProgress = { phase ->
-                                directProjectLoadingPhaseText = phase
-                            },
-                            onComplete = {
-                                isCreatingDirectProject = false
-                                pendingImportUris = emptyList()
-                                onDirectEditProjectCreated()
-                            }
-                        )
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF87)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ClosedCaption,
-                        contentDescription = null,
-                        tint = Color.Black,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "✨ Transcribe Voice & Add Captions".localize(appLanguageState),
-                        color = Color.Black,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Secondary Action Button: Skip Transcription
-                OutlinedButton(
-                    onClick = {
-                        val urisToProcess = pendingImportUris
-                        showAutoCaptionImportDialog = false
-                        isCreatingDirectProject = true
-                        directProjectLoadingPhaseText = "Loading Editor..."
-                        viewModel.createDirectEditProject(
-                            title = "Video Project #${System.currentTimeMillis() % 1000}",
-                            uris = urisToProcess,
-                            context = context,
-                            autoTranscribeCaptions = false,
-                            onComplete = {
-                                isCreatingDirectProject = false
-                                pendingImportUris = emptyList()
-                                onDirectEditProjectCreated()
-                            }
-                        )
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.LightGray),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
-                ) {
-                    Text(
-                        text = "Skip, Edit Directly".localize(appLanguageState),
-                        fontSize = 12.sp,
-                        color = Color.LightGray
-                    )
                 }
             }
         }
@@ -2900,6 +2707,21 @@ fun ProjectCard(
                         fontWeight = FontWeight.Medium,
                         color = SecondaryMuted
                     )
+                    if (project.status.equals("Draft", ignoreCase = true)) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFFFFA000).copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "Draft • Resume",
+                                fontSize = 9.sp,
+                                color = Color(0xFFFFB300),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
                 Text(
                     text = dateStr,
@@ -3056,30 +2878,38 @@ fun VoiceClipCard(
     onDelete: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, if (isPlaying) GlowingPurple else BorderColor.copy(alpha = 0.5f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("voice_clip_card_${clip.id}"),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.2.dp, if (isPlaying) GlowingPurple else BorderColor.copy(alpha = 0.45f)),
         colors = CardDefaults.cardColors(
-            containerColor = if (isPlaying) GlowingPurple.copy(alpha = 0.08f) else CardBg
+            containerColor = if (isPlaying) GlowingPurple.copy(alpha = 0.09f) else CardBg
         )
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            // Header Row: Play Button + Title & Tags
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Circular 48dp Touch Target Play Button
                 IconButton(
                     onClick = onPlayToggle,
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(48.dp)
                         .background(
-                            if (isPlaying) GlowingPurple else GlowingPurple.copy(alpha = 0.15f),
+                            if (isPlaying) GlowingPurple else GlowingPurple.copy(alpha = 0.16f),
                             CircleShape
                         )
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                        contentDescription = "Play/Stop",
+                        contentDescription = if (isPlaying) "Stop Voice Clip" else "Play Voice Clip",
                         tint = if (isPlaying) Color.White else GlowingPurple,
                         modifier = Modifier.size(24.dp)
                     )
@@ -3093,70 +2923,80 @@ fun VoiceClipCard(
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 18.sp
                     )
 
+                    Spacer(modifier = Modifier.height(4.dp))
+
                     Row(
-                        modifier = Modifier.padding(top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = GlowingPurple.copy(alpha = 0.15f)
+                            shape = RoundedCornerShape(6.dp),
+                            color = GlowingPurple.copy(alpha = 0.16f)
                         ) {
                             Text(
                                 text = clip.engineName,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = GlowingPurple,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
                         if (clip.voiceName.isNotBlank()) {
-                            Spacer(modifier = Modifier.width(6.dp))
                             Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = HotPink.copy(alpha = 0.12f)
+                                shape = RoundedCornerShape(6.dp),
+                                color = HotPink.copy(alpha = 0.14f),
+                                modifier = Modifier.weight(1f, fill = false)
                             ) {
                                 Text(
                                     text = clip.voiceName,
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = HotPink,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
 
                         val kbSize = clip.fileSizeBytes / 1024
                         if (kbSize > 0) {
-                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "${kbSize} KB",
                                 fontSize = 10.sp,
-                                color = SecondaryMuted
+                                color = SecondaryMuted,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
                 }
             }
 
+            // Script Text Preview
             if (clip.scriptText.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = clip.scriptText,
-                    fontSize = 11.sp,
+                    fontSize = 11.5.sp,
                     color = SecondaryMuted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    lineHeight = 15.sp,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                    lineHeight = 16.sp
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
+            // Action Bar: Use in Reel Primary + Download / Share / Delete Icon Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -3164,60 +3004,63 @@ fun VoiceClipCard(
             ) {
                 Button(
                     onClick = onApplyToVideo,
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier.height(30.dp)
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.height(38.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Movie,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(13.dp)
+                        modifier = Modifier.size(15.dp)
                     )
-                    Spacer(modifier = Modifier.width(5.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Use in Reel".localize(appLanguageState),
-                        fontSize = 10.5.sp,
+                        fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     IconButton(
                         onClick = onDownload,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Download,
-                            contentDescription = "Download",
+                            contentDescription = "Download Voice Clip",
                             tint = GlowingPurple,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
                     IconButton(
                         onClick = onShare,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Share,
-                            contentDescription = "Share",
+                            contentDescription = "Share Voice Clip",
                             tint = SecondaryMuted,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
                     IconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete",
-                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                            modifier = Modifier.size(18.dp)
+                            contentDescription = "Delete Voice Clip",
+                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -5148,7 +4991,12 @@ fun ReelPlayerDialog(
             val sceneDuration = scene.durationSeconds.toFloat()
             progressSeconds = 0f
             
-            viewModel.speakText(scene.subtitle)
+            val isVideo = scene.mediaType.equals("VIDEO", ignoreCase = true) ||
+                    scene.visualPrompt.contains("Imported", ignoreCase = true) ||
+                    com.ritvyom.yashoraReelgenerator.presentation.utils.ReelVideoCompiler.isVideoPath(context, scene.mediaPath ?: "")
+            if (!isVideo && scene.narrationText.isNotBlank() && !viewModel.isPlaceholderNarration(scene.narrationText)) {
+                viewModel.speakText(scene.narrationText)
+            }
             
             while (isPlaying && progressSeconds < sceneDuration && !useVideoPlayer) {
                 delay(100)

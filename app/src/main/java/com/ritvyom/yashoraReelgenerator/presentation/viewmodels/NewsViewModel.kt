@@ -450,7 +450,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     fun generateReelScriptWithGemini(
         news: NewsItem,
         tone: String = "Breaking News",
-        language: String = "Hindi & English",
+        language: String = "Hindi",
         duration: String = "Short",
         onResult: (String) -> Unit
     ) {
@@ -468,7 +468,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun generateReelScriptLocal(news: NewsItem, tone: String = "Breaking News", language: String = "Hindi & English"): String {
+    fun generateReelScriptLocal(news: NewsItem, tone: String = "Breaking News", language: String = "Hindi"): String {
         return repository.generateViralReelScript(news, tone, language)
     }
 

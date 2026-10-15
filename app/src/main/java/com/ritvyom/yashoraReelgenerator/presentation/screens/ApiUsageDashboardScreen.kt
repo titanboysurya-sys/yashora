@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,7 @@ fun ApiUsageDashboardScreen(
     onNavigateToVoiceStudio: () -> Unit = {}
 ) {
     val appLanguageState by viewModel.appLanguage.collectAsState()
+    val uriHandler = LocalUriHandler.current
     val geminiQuota by GeminiQuotaTracker.quotaState.collectAsState()
     val userUsageMap by UserAiUsageTracker.usageMap.collectAsState()
     val voxElevenSubscription by viewModel.voxElevenSubscription.collectAsState()
@@ -513,16 +515,43 @@ fun ApiUsageDashboardScreen(
                             )
                         }
 
-                        // Navigation Button to Voice Studio
-                        OutlinedButton(
-                            onClick = onNavigateToVoiceStudio,
-                            shape = RoundedCornerShape(8.dp),
+                        // Action Buttons: Open Voice Studio & Direct link to Get API Key
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Open Voice Studio & Configure ElevenLabs".localize(appLanguageState), fontSize = 11.5.sp)
+                            OutlinedButton(
+                                onClick = onNavigateToVoiceStudio,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Voice Studio".localize(appLanguageState), fontSize = 11.5.sp)
+                            }
+
+                            Button(
+                                onClick = {
+                                    try {
+                                        uriHandler.openUri("https://elevenlabs.io/app/settings/api-keys")
+                                    } catch (_: Exception) {}
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                modifier = Modifier
+                                    .weight(1.1f)
+                                    .testTag("dashboard_get_elevenlabs_key_btn"),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(13.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (appLanguageState == "hi") "की बनाएं ↗" else "Get API Key ↗",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }

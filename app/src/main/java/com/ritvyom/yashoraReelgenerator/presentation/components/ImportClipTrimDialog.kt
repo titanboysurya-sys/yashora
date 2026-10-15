@@ -109,7 +109,7 @@ fun ImportClipTrimDialog(
     var trimProgress by remember { mutableFloatStateOf(0f) }
     var trimErrorMessage by remember { mutableStateOf<String?>(null) }
 
-    var autoTranscribeVoice by remember { mutableStateOf(true) }
+    var autoTranscribeVoice by remember { mutableStateOf(false) }
     var selectedTranscribeLang by remember { mutableStateOf("Auto") }
 
     var videoViewInstance by remember { mutableStateOf<VideoView?>(null) }
@@ -614,82 +614,7 @@ fun ImportClipTrimDialog(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            // Dedicated Auto-Caption Voice Card
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF1B152B),
-                                border = BorderStroke(1.dp, if (autoTranscribeVoice) Color(0xFF00FF87).copy(alpha = 0.6f) else Color.White.copy(alpha = 0.12f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                            Icon(
-                                                imageVector = Icons.Default.ClosedCaption,
-                                                contentDescription = null,
-                                                tint = if (autoTranscribeVoice) Color(0xFF00FF87) else Color.Gray,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Column {
-                                                Text(
-                                                    text = "Auto-Caption Video Voice 🎙️".localize(appLanguage),
-                                                    color = Color.White,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                Text(
-                                                    text = "Transcribe spoken words into animated captions".localize(appLanguage),
-                                                    color = Color(0xFFA5B4FC),
-                                                    fontSize = 10.sp
-                                                )
-                                            }
-                                        }
-                                        Switch(
-                                            checked = autoTranscribeVoice,
-                                            onCheckedChange = { autoTranscribeVoice = it },
-                                            colors = SwitchDefaults.colors(
-                                                checkedThumbColor = Color(0xFF00FF87),
-                                                checkedTrackColor = Color(0xFF00FF87).copy(alpha = 0.35f)
-                                            )
-                                        )
-                                    }
-
-                                    if (autoTranscribeVoice) {
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            listOf("Auto", "Hindi", "Hinglish", "English").forEach { lang ->
-                                                val isSel = selectedTranscribeLang == lang
-                                                Surface(
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    color = if (isSel) Color(0xFF00FF87) else Color(0xFF261F38),
-                                                    border = BorderStroke(0.8.dp, if (isSel) Color(0xFF00FF87) else Color.White.copy(alpha = 0.15f)),
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .clickable { selectedTranscribeLang = lang }
-                                                ) {
-                                                    Text(
-                                                        text = lang,
-                                                        color = if (isSel) Color.Black else Color.White,
-                                                        fontSize = 10.sp,
-                                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                                        textAlign = TextAlign.Center,
-                                                        modifier = Modifier.padding(vertical = 4.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
+                            // Proceed to add clip to timeline
                             Button(
                                 onClick = {
                                     isTrimming = true

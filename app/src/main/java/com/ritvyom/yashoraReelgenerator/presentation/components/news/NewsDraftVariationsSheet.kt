@@ -100,8 +100,9 @@ fun NewsDraftVariationsSheet(
     onDismiss: () -> Unit
 ) {
     // Generate 3 variations from authentic news content
-    val variations = remember(news, articleImages, articleVideos) {
-        NewsDraftVariationEngine.generateVariations(news, articleImages, articleVideos)
+    val variations = remember(news, articleImages, articleVideos, appLanguage) {
+        val targetLang = if (news.language.contains("Hindi", ignoreCase = true) || appLanguage.contains("hi", ignoreCase = true) || news.title.any { it in '\u0900'..'\u097F' }) "Hindi" else "English"
+        NewsDraftVariationEngine.generateVariations(news, articleImages, articleVideos, targetLang)
     }
 
     var selectedVariationIndex by remember { mutableIntStateOf(0) }
@@ -131,7 +132,10 @@ fun NewsDraftVariationsSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -151,13 +155,15 @@ fun NewsDraftVariationsSheet(
                         )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "Choose Draft Reel Style".localize(appLanguage),
                                 color = Color.White,
                                 fontSize = 16.sp,
-                                fontWeight = FontWeight.ExtraBold
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Surface(
@@ -177,51 +183,115 @@ fun NewsDraftVariationsSheet(
                         Text(
                             text = "Generated from authentic news content & media".localize(appLanguage),
                             color = Color(0xFFA592C4),
-                            fontSize = 11.sp
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (onOpenCustomScriptDialog != null) {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("news_draft_sheet_close_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = Color.LightGray
+                    )
+                }
+            }
+
+            // =========================================================================
+            // 1.1 AI SCRIPT REFINE & CUSTOM PROMPT ACTION BUTTON
+            // =========================================================================
+            if (onOpenCustomScriptDialog != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF261245),
+                    border = BorderStroke(1.5.dp, Brush.horizontalGradient(listOf(Color(0xFF8A2BE2), Color(0xFFB09CCC)))),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenCustomScriptDialog() }
+                        .testTag("news_refine_custom_script_button")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(Brush.radialGradient(listOf(Color(0xFF8A2BE2), Color(0xFF4A0E4E)))),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = Color(0xFF00FF87),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                Text(
+                                    text = "✨ AI Script Refine & Custom Prompt".localize(appLanguage),
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Customize tone, duration & script before generating".localize(appLanguage),
+                                    color = Color(0xFFD0BCFF),
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFF2B134D),
-                            border = BorderStroke(1.dp, Color(0xFF8A2BE2)),
-                            modifier = Modifier
-                                .clickable { onOpenCustomScriptDialog() }
-                                .padding(end = 6.dp)
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color(0xFF8A2BE2),
+                            contentColor = Color.White,
+                            shadowElevation = 2.dp
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Edit,
                                     contentDescription = null,
                                     tint = Color(0xFF00FF87),
-                                    modifier = Modifier.size(12.dp)
+                                    modifier = Modifier.size(13.dp)
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
                                 Text(
-                                    text = "Custom Prompt".localize(appLanguage),
-                                    color = Color.White,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
+                                    text = "Refine".localize(appLanguage),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
-                    }
-
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = Color.Gray
-                        )
                     }
                 }
             }

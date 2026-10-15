@@ -236,6 +236,7 @@ class MainActivity : ComponentActivity() {
                                 VideoEditorScreen(
                                     viewModel = viewModel,
                                     onBack = {
+                                        viewModel.saveCurrentScenesToDb()
                                         navigateBack()
                                     },
                                     onNavigateToConfig = {

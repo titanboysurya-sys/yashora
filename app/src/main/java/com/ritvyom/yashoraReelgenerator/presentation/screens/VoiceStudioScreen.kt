@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -52,6 +54,7 @@ fun VoiceStudioScreen(
     onNavigateToApiDashboard: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val appLanguageState by viewModel.appLanguage.collectAsState()
 
     val selectedEngine by viewModel.selectedTtsEngine.collectAsState()
@@ -380,12 +383,96 @@ fun VoiceStudioScreen(
                                     )
                                 }
                             }
-                            Text(
-                                "Enter your xi-api-key to load human-quality neural voices.".localize(appLanguageState),
-                                fontSize = 10.5.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
-                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Enter your xi-api-key to load human-quality neural voices.".localize(appLanguageState),
+                                    fontSize = 10.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(top = 2.dp, bottom = 4.dp)
+                                )
+                                TextButton(
+                                    onClick = {
+                                        try {
+                                            uriHandler.openUri("https://elevenlabs.io/app/settings/api-keys")
+                                        } catch (_: Exception) {}
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.testTag("get_elevenlabs_key_link_btn")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.OpenInNew,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (appLanguageState == "hi") "की प्राप्त करें ↗" else "Get API Key ↗",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+
+                            // Tap to open ElevenLabs website and generate API key directly
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        try {
+                                            uriHandler.openUri("https://elevenlabs.io/app/settings/api-keys")
+                                        } catch (_: Exception) {}
+                                    }
+                                    .padding(vertical = 4.dp)
+                                    .testTag("elevenlabs_get_key_banner")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Launch,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (appLanguageState == "hi")
+                                                "elevenlabs.io से मुफ्त API Key बनाएं (टैप करके तुरंत खोलें)"
+                                            else
+                                                "Get your free API Key on elevenlabs.io (Tap to open)",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.ChevronRight,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
 
                             OutlinedTextField(
                                 value = apiKeyInput,
@@ -1009,163 +1096,199 @@ fun VoiceStudioScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 3.dp),
-                        shape = RoundedCornerShape(12.dp),
+                            .padding(vertical = 4.dp),
+                        shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isClipPlaying) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            containerColor = if (isClipPlaying) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                         ),
                         border = BorderStroke(
                             width = if (isClipPlaying) 1.5.dp else 1.dp,
-                            color = if (isClipPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                            color = if (isClipPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                         )
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(14.dp)
                         ) {
-                            // Compact Circular Play/Pause button
-                            IconButton(
-                                onClick = {
-                                    if (isClipPlaying) {
-                                        viewModel.stopVoiceClipPlayback()
-                                    } else {
-                                        viewModel.playVoiceClip(clip)
-                                    }
-                                },
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .background(
-                                        color = if (isClipPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
-                                        shape = CircleShape
-                                    )
+                            // Header Row: Circular 48dp Play Button + Title & Tags
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = if (isClipPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                    contentDescription = "Play/Stop Clip",
-                                    tint = if (isClipPlaying) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(10.dp))
-
-                            // Compact Title + Details Column
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = clip.title,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.5.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    modifier = Modifier.padding(top = 1.dp)
-                                ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(3.dp),
-                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
-                                    ) {
-                                        Text(
-                                            text = clip.engineName,
-                                            fontSize = 8.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                IconButton(
+                                    onClick = {
+                                        if (isClipPlaying) {
+                                            viewModel.stopVoiceClipPlayback()
+                                        } else {
+                                            viewModel.playVoiceClip(clip)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .background(
+                                            color = if (isClipPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
+                                            shape = CircleShape
                                         )
-                                    }
-                                    val kbSize = clip.fileSizeBytes / 1024
-                                    Text(
-                                        text = "• ${kbSize} KB",
-                                        fontSize = 9.5.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                ) {
+                                    Icon(
+                                        imageVector = if (isClipPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                        contentDescription = if (isClipPlaying) "Stop Clip" else "Play Clip",
+                                        tint = if (isClipPlaying) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(24.dp)
                                     )
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = clip.title,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.5.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        lineHeight = 17.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.75f)
+                                        ) {
+                                            Text(
+                                                text = clip.engineName,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        val kbSize = clip.fileSizeBytes / 1024
+                                        if (kbSize > 0) {
+                                            Text(
+                                                text = "${kbSize} KB",
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
                                 }
                             }
 
-                            Spacer(modifier = Modifier.width(4.dp))
+                            // Script preview snippet if present
+                            if (clip.scriptText.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = clip.scriptText,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    lineHeight = 15.sp
+                                )
+                            }
 
-                            // Action Icons Row
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Action Bar: Use in Video + Download / Share / Delete Icons
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                IconButton(
+                                Button(
                                     onClick = {
                                         viewModel.setCustomMasterVoice(clip.filePath, clip.title)
                                         Toast.makeText(context, "Applied as Master Voice for all scenes in Video!".localize(appLanguageState), Toast.LENGTH_SHORT).show()
                                     },
-                                    modifier = Modifier.size(30.dp)
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.height(38.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Check,
-                                        contentDescription = "Use in Video",
-                                        tint = Color(0xFF00E676),
-                                        modifier = Modifier.size(18.dp)
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Use in Video".localize(appLanguageState),
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
                                     )
                                 }
 
-                                IconButton(
-                                    onClick = {
-                                        viewModel.downloadVoiceClipToStorage(context, clip)
-                                    },
-                                    modifier = Modifier.size(30.dp)
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Download,
-                                        contentDescription = "Download to Files",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.downloadVoiceClipToStorage(context, clip)
+                                        },
+                                        modifier = Modifier.size(40.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = "Download to Files",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
 
-                                IconButton(
-                                    onClick = {
-                                        try {
-                                            val file = java.io.File(clip.filePath)
-                                            val uri = androidx.core.content.FileProvider.getUriForFile(
-                                                context,
-                                                "${context.packageName}.fileprovider",
-                                                file
-                                            )
-                                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                                type = "audio/*"
-                                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    IconButton(
+                                        onClick = {
+                                            try {
+                                                val file = java.io.File(clip.filePath)
+                                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                                                    context,
+                                                    "${context.packageName}.fileprovider",
+                                                    file
+                                                )
+                                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                    type = "audio/*"
+                                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                }
+                                                context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Voice Clip"))
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Error sharing file: ${e.message}", Toast.LENGTH_SHORT).show()
                                             }
-                                            context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Voice Clip"))
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "Error sharing file: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                    modifier = Modifier.size(30.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Share,
-                                        contentDescription = "Share Clip",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
+                                        },
+                                        modifier = Modifier.size(40.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Share,
+                                            contentDescription = "Share Clip",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
 
-                                IconButton(
-                                    onClick = {
-                                        clipToDelete = clip
-                                    },
-                                    modifier = Modifier.size(30.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Delete Clip",
-                                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                    IconButton(
+                                        onClick = {
+                                            clipToDelete = clip
+                                        },
+                                        modifier = Modifier.size(40.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete Clip",
+                                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1174,7 +1297,7 @@ fun VoiceStudioScreen(
             }
 
             item {
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(110.dp))
             }
         }
     }

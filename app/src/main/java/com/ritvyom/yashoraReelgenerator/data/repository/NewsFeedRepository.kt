@@ -1895,7 +1895,7 @@ class NewsFeedRepository(private val context: Context? = null) {
     suspend fun generateScriptUsingGemini(
         news: NewsItem,
         tone: String = "Breaking News",
-        language: String = "Hindi & English",
+        language: String = "Hindi",
         durationOption: String = "Short"
     ): String = withContext(Dispatchers.IO) {
         val userGeminiKey = try {
@@ -1922,13 +1922,20 @@ class NewsFeedRepository(private val context: Context? = null) {
             News Language: ${news.language}
             
             Write a viral, fast-paced vertical video Reel / Short narration script.
-            Language: $language
+            Target Language: $language
             
             Structure:
             1. An irresistible 2-second visual & verbal Hook that stops scrolling immediately.
             2. The core story facts explained clearly and concisely.
             3. The key impact or why the viewer should care right now.
             4. An engaging closing question prompting viewers to comment and follow.
+
+            MANDATORY FORMAT & LANGUAGE RULES:
+            - STRICT UNILINGUAL CONSISTENCY: The entire script MUST be 100% in $language. If $language is Hindi, write exclusively in pure authentic Hindi using Devanagari script. DO NOT mix English words into Hindi sentences. If English, write 100% in pure English. Never mix languages.
+            - Output ONLY pure, spoken narration sentences in the native script of $language (Devanagari for Hindi).
+            - Do NOT include labels like 'Hook:', 'Core Facts:', 'Impact:', 'Question:', 'Scene 1:', bullet numbers (1., 2., 3.), or visual instructions.
+            - Do NOT include emojis, markdown asterisks, brackets, or parenthetical cues.
+            - Write continuous, rhythmic narration text ready for text-to-speech voiceover.
         """.trimIndent()
 
         try {
@@ -1940,13 +1947,14 @@ class NewsFeedRepository(private val context: Context? = null) {
                 customGeminiKey = userGeminiKey
             )
             if (geminiResult.isNotBlank() && !geminiResult.contains("Error:", ignoreCase = true)) {
-                return@withContext geminiResult.trim()
+                return@withContext com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer.cleanScriptText(geminiResult)
             }
         } catch (e: Exception) {
             Log.w("NewsFeedRepository", "Gemini API script generation failed: ${e.message}, using fallback")
         }
 
-        return@withContext generateViralReelScript(news, tone, language)
+        val fallbackScript = generateViralReelScript(news, tone, language)
+        return@withContext com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer.cleanScriptText(fallbackScript)
     }
 
     /**
@@ -1959,7 +1967,7 @@ class NewsFeedRepository(private val context: Context? = null) {
     fun generateViralReelScript(
         news: NewsItem,
         tone: String = "Breaking News",
-        language: String = "Hindi & English"
+        language: String = "Hindi"
     ): String {
         val titleClean = cleanHtml(news.title).replace("\n", " ").trim()
         val rawBody = if (news.content.isNotBlank() && news.content.length > news.summary.length) {

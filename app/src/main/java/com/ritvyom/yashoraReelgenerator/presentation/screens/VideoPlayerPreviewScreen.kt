@@ -789,6 +789,7 @@ private fun Media3PlayerContainer(
                         DynamicCaptionOverlay(
                             scene = effectiveScene,
                             isPlaying = isPlaying,
+                            currentPositionMs = currentProgressMs,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .padding(bottom = 20.dp, start = 8.dp, end = 8.dp)
@@ -796,22 +797,34 @@ private fun Media3PlayerContainer(
                     } else {
                         val subColor = try { Color(android.graphics.Color.parseColor(scene.subtitleColor.ifEmpty { "#FFFFFF" })) } catch (e: Exception) { Color.White }
                         val subBg = try { Color(android.graphics.Color.parseColor(scene.subtitleBgColor.ifEmpty { "#BB000000" })) } catch (e: Exception) { Color(0xBB000000) }
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 16.dp, start = 12.dp, end = 12.dp)
-                                .background(subBg, RoundedCornerShape(8.dp))
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = overlayText,
-                                color = subColor,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
+
+                        val curSec = (currentProgressMs / 1000f).coerceAtLeast(0f)
+                        val activeClassicText = remember(scene.srtCaptions, overlayText, curSec, isPlaying) {
+                            val segs = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.getOrGenerateSegments(scene)
+                            val match = segs.firstOrNull { curSec >= it.startSec && curSec <= it.endSec }
+                            if (match != null) match.text
+                            else if (!isPlaying && curSec < 0.4f) segs.firstOrNull()?.text ?: ""
+                            else ""
+                        }
+
+                        if (activeClassicText.isNotBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 16.dp, start = 12.dp, end = 12.dp)
+                                    .background(subBg, RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = activeClassicText,
+                                    color = subColor,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }

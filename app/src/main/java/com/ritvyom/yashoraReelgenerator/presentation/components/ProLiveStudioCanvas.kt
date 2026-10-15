@@ -716,6 +716,128 @@ fun ProLivePipelineStatusCards(
         }
 
         // ========================================================
+        // SECTION 1B: 🎙️ VOICEOVER AUDIO FILE (ACTIVE SPEECH TRACK)
+        // ========================================================
+        val activeScene = scenes.getOrNull(activeSceneIndex)
+        val hasAnyNarration = scenes.any { it.narrationText.isNotBlank() || !it.customVoiceAudioPath.isNullOrBlank() }
+        if (hasAnyNarration) {
+            val audioPath = activeScene?.customVoiceAudioPath
+            val isAudioReady = !audioPath.isNullOrBlank() && java.io.File(audioPath).exists()
+            val fileName = if (isAudioReady) java.io.File(audioPath!!).name else "scene_speech_${activeSceneIndex + 1}.wav"
+            val isHindiVoice = languageState.contains("hi", ignoreCase = true) || activeScene?.narrationText?.any { it in '\u0900'..'\u097F' } == true
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF190E2D)
+                ),
+                border = BorderStroke(
+                    1.2.dp,
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color(0xFFBA68C8).copy(alpha = 0.8f),
+                            Color(0xFFFFD54F).copy(alpha = 0.8f)
+                        )
+                    )
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.RecordVoiceOver,
+                                contentDescription = "Voiceover Track",
+                                tint = Color(0xFFFFD54F),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "VOICEOVER AUDIO TRACK".localize(languageState),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 1.sp,
+                                color = Color(0xFFFFD54F)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isAudioReady || progress >= 0.65f) Color(0xFF00FF87).copy(alpha = 0.2f) else Color(0xFFFF9100).copy(alpha = 0.2f),
+                            border = BorderStroke(0.6.dp, if (isAudioReady || progress >= 0.65f) Color(0xFF00FF87) else Color(0xFFFF9100))
+                        ) {
+                            Text(
+                                text = if (isAudioReady || progress >= 0.65f) "✓ AUDIO FILE LINKED" else "⏳ SYNTHESIZING SPEECH",
+                                color = if (isAudioReady || progress >= 0.65f) Color(0xFF00FF87) else Color(0xFFFF9100),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    // Voice file name & language badge
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF100720))
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "📁 $fileName",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "Voice: ${voiceName.ifEmpty { "Yashora Natural" }} • ${if (isHindiVoice) "🇮🇳 शुद्ध हिंदी (Devanagari)" else "🌐 100% English"}",
+                                fontSize = 10.sp,
+                                color = Color(0xFFCE93D8),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        Icon(
+                            imageVector = Icons.Default.GraphicEq,
+                            contentDescription = null,
+                            tint = Color(0xFFFFD54F),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Active Scene Spoken Script (Pure Language Preview)
+                    if (activeScene != null && activeScene.narrationText.isNotBlank()) {
+                        Text(
+                            text = "🎙️ \"${activeScene.narrationText}\"",
+                            fontSize = 11.sp,
+                            color = Color.White.copy(alpha = 0.95f),
+                            lineHeight = 15.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+
+        // ========================================================
         // SECTION 2: ✅ COMPLETED WORK (DONE TASKS)
         // ========================================================
         Card(

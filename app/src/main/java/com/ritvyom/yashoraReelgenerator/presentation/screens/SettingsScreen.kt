@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import android.util.Log
 import android.widget.Toast
 import com.ritvyom.yashoraReelgenerator.presentation.viewmodels.MainViewModel
@@ -1036,6 +1037,7 @@ fun GeminiApiConfigDialog(
 ) {
     var keyInput by remember(currentApiKey) { mutableStateOf(currentApiKey) }
     val isHindi = languageState.contains("hi", ignoreCase = true) || languageState.contains("hindi", ignoreCase = true)
+    val uriHandler = LocalUriHandler.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1181,14 +1183,37 @@ fun GeminiApiConfigDialog(
                     )
                 }
 
-                Text(
-                    text = if (isHindi)
-                        "आप aistudio.google.com से मुफ़्त Gemini API Key प्राप्त कर सकते हैं।"
-                    else
-                        "You can obtain a free Gemini API key from Google AI Studio (aistudio.google.com).",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isHindi)
+                            "आप aistudio.google.com से मुफ़्त Gemini API Key प्राप्त कर सकते हैं।"
+                        else
+                            "Get a free Gemini API key from Google AI Studio.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(
+                        onClick = {
+                            try {
+                                uriHandler.openUri("https://aistudio.google.com")
+                            } catch (_: Exception) {}
+                        },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = if (isHindi) "की प्राप्त करें ↗" else "Get Key ↗",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
         },
         confirmButton = {

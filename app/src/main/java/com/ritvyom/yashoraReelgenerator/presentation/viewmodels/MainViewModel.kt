@@ -1433,10 +1433,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
 
     private fun sanitizeNarrationTextForSpeech(text: String): String {
         if (text.isEmpty()) return ""
-        return text
+        var cleaned = text
+            // Strip scene brackets and markers like [Scene 1 - Headline], [Hook], [Outro], etc.
+            .replace(Regex("""\[.*?\]"""), " ")
+            .replace(Regex("""\(Scene.*?\)|\[Scene.*?\]""", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("""\bScene\s*\d+\s*[-:]*""", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("""\b(Hook|Headline|Outro|Intro|Core Facts|Call to Action)\s*[-:]*""", RegexOption.IGNORE_CASE), " ")
             // Replace multiple periods/ellipses with a single comma and a space to create a clean natural pause and avoid "dot dot dot" voiceover
             .replace(Regex("""\.{2,}"""), ", ")
-            // Clean standard Emojis
+            // Clean standard Emojis (e.g. 🚨, ⚡, 🎬, 🎙️, etc.)
             .replace(Regex("""[\uD83C-\uDBFF\uDC00-\uDFFF]+"""), "")
             // Clean remaining symbols/characters
             .replace(Regex("""[\p{So}\p{Cn}]"""), "")
@@ -1446,7 +1451,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
             .replace("\"", " ")
             .replace("'", " ")
             .replace("\n", " ")
-            // Replace multiple spaces with a single space
+
+        val isHindi = cleaned.any { it in '\u0900'..'\u097F' } || selectedLanguage.value.contains("hindi", ignoreCase = true)
+
+        if (isHindi) {
+            // Transliterate and normalize common code-mixed English loan words to natural Devanagari
+            // so that the Hindi TTS engine does not glitch, stutter, or switch to English accents!
+            val replacements = listOf(
+                Regex("""(?i)\bvideo\b""") to "वीडियो",
+                Regex("""(?i)\bnews\b""") to "समाचार",
+                Regex("""(?i)\bupdate\b""") to "अपडेट",
+                Regex("""(?i)\bbreaking\b""") to "बड़ी ख़बर",
+                Regex("""(?i)\bsubscribe\b""") to "सब्सक्राइब",
+                Regex("""(?i)\bchannel\b""") to "चैनल",
+                Regex("""(?i)\bshare\b""") to "शेयर",
+                Regex("""(?i)\blike\b""") to "लाइक",
+                Regex("""(?i)\bpercent\b""") to "प्रतिशत",
+                Regex("""(?i)\bcrore\b""") to "करोड़",
+                Regex("""(?i)\blakh\b""") to "लाख",
+                Regex("""(?i)\bmillion\b""") to "मिलियन",
+                Regex("""(?i)\bbillion\b""") to "बिलियन",
+                Regex("""(?i)\brupee[s]?\b""") to "रुपये",
+                Regex("""(?i)\bdollar[s]?\b""") to "डॉलर",
+                Regex("""(?i)\btechnology\b""") to "तकनीक",
+                Regex("""(?i)\btech\b""") to "तकनीक",
+                Regex("""(?i)\bmobile\b""") to "मोबाइल",
+                Regex("""(?i)\bphone\b""") to "फ़ोन",
+                Regex("""(?i)\bpolice\b""") to "पुलिस",
+                Regex("""(?i)\bdoctor\b""") to "डॉक्टर",
+                Regex("""(?i)\bgovernment\b""") to "सरकार",
+                Regex("""(?i)\bminister\b""") to "मंत्री",
+                Regex("""(?i)\breport\b""") to "रिपोर्ट",
+                Regex("""(?i)\bfacts\b""") to "तथ्य",
+                Regex("""(?i)\bdetails\b""") to "विवरण",
+                Regex("""(?i)\btoday\b""") to "आज",
+                Regex("""(?i)\bworld\b""") to "दुनिया",
+                Regex("""(?i)\bcountry\b""") to "देश",
+                Regex("""(?i)\bheadline\b""") to "मुख्य समाचार"
+            )
+            for ((pattern, replacement) in replacements) {
+                cleaned = cleaned.replace(pattern, replacement)
+            }
+        }
+
+        return cleaned
             .replace(Regex("""\s+"""), " ")
             .trim()
     }
@@ -1454,16 +1502,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
     fun isPlaceholderNarration(text: String): Boolean {
         val trimmed = text.trim().lowercase(Locale.ROOT)
         if (trimmed.isEmpty()) return true
+        // If it contains Hindi Devanagari characters or has more than 3 words, it's authentic narration!
+        if (text.any { it in '\u0900'..'\u097F' }) return false
+        if (trimmed.split("\\s+".toRegex()).size > 3) return false
         val placeholderPatterns = listOf(
             Regex("""^manual\s*scene(\s*\d+)?$"""),
             Regex("""^scene(\s*#?\s*\d+)?$"""),
             Regex("""^clip(\s*#?\s*\d+)?$"""),
             Regex("""^custom\s*clip$"""),
-            Regex("""^new\s*scene$"""),
-            Regex("""^imported\s*(video|photo|mid-video|timeline)?\s*(clip|addition)?.*$"""),
-            Regex("""^imported\s*visual\s*matching.*$"""),
-            Regex("""^custom\s*user\s*imported\s*media\s*content$"""),
-            Regex("""^slide\s*media\s*not\s*found.*$""")
+            Regex("""^new\s*scene$""")
         )
         return placeholderPatterns.any { it.matches(trimmed) }
     }
@@ -1543,7 +1590,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
         speakTextLocally(sanitizedText)
     }
 
-    private fun playLocalAudioFile(file: File) {
+    fun playSceneNarration(scene: com.ritvyom.yashoraReelgenerator.domain.models.Scene) {
+        val audioPath = scene.customVoiceAudioPath
+        if (!audioPath.isNullOrBlank() && File(audioPath).exists() && File(audioPath).length() > 44) {
+            playLocalAudioFile(File(audioPath))
+        } else if (scene.narrationText.isNotBlank() && !isPlaceholderNarration(scene.narrationText)) {
+            speakText(scene.narrationText)
+        }
+    }
+
+    fun playLocalAudioFile(file: File) {
         try {
             premiumMediaPlayer?.stop()
             premiumMediaPlayer?.release()
@@ -1934,6 +1990,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                                 scriptText = sanitizedText
                             )
                         }
+                        scene.customVoiceAudioPath = generatedFile?.absolutePath
                         sceneFiles.add(generatedFile)
                     } catch (e: Exception) {
                         Log.e("VoxElevenSynthesis", "Error synthesizing scene $index with VoxEleven", e)
@@ -1967,7 +2024,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
             if (!exists()) mkdirs()
         }
 
-        // Prepare full script text for single-segment continuous voiceover ("ek khand speech")
+        // Prepare full script text for voiceover
         val sceneTexts = scenes.map { scene ->
             val rawText = if (scene.narrationText.isNotBlank() && !isPlaceholderNarration(scene.narrationText)) scene.narrationText else ""
             sanitizeNarrationTextForSpeech(rawText)
@@ -2189,93 +2246,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
             }
         })
 
-        if (nonBlankSceneTexts.isNotEmpty() && tts != null && ttsReady) {
-            try {
-                val fullScriptText = nonBlankSceneTexts.joinToString(". ")
-                val masterParamKey = "continuous_native_${fullScriptText}_${selectedLanguage.value}_${selectedVoiceName.value}_${selectedVoiceCategory.value}_${voiceSpeed.value}_${voicePitch.value}_${voiceEmotion.value}"
-                val masterHash = md5(masterParamKey)
-                val masterCacheFile = File(localVoicesDir, "master_$masterHash.wav")
-                val masterTempFile = File(cacheDir, "master_speech_native_${System.currentTimeMillis()}.wav")
-
-                var masterReady = false
-                if (masterCacheFile.exists() && masterCacheFile.length() > 44) {
-                    try {
-                        masterCacheFile.copyTo(masterTempFile, overwrite = true)
-                        masterReady = true
-                    } catch (e: Exception) {
-                        Log.e("VoiceCache", "Error copying cached master native WAV", e)
-                    }
-                }
-
-                if (!masterReady) {
-                    val utteranceId = "master_speech_utterance"
-                    val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
-                    activeTasks[utteranceId] = deferred
-
-                    val params = android.os.Bundle()
-                    params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
-
-                    val result = tts?.synthesizeToFile(fullScriptText, params, masterTempFile, utteranceId)
-                    if (result == TextToSpeech.SUCCESS) {
-                        val ok = kotlinx.coroutines.withTimeoutOrNull(60000L) { deferred.await() } ?: false
-                        for (attempt in 1..25) {
-                            if (masterTempFile.exists() && masterTempFile.length() > 44) {
-                                masterReady = true
-                                break
-                            }
-                            delay(50)
-                        }
-                        if ((ok || masterReady) && masterTempFile.exists() && masterTempFile.length() > 44) {
-                            try { masterTempFile.copyTo(masterCacheFile, overwrite = true) } catch (e: Exception) {}
-                        }
-                    }
-                    activeTasks.remove(utteranceId)
-                }
-
-                if (masterTempFile.exists() && masterTempFile.length() > 44) {
-                    val masterInfo = com.ritvyom.yashoraReelgenerator.presentation.utils.WavFileInfo.readWavFile(masterTempFile)
-                    if (masterInfo != null && masterInfo.pcmData.isNotEmpty()) {
-                        val persistentMasterFile = File(getApplication<Application>().filesDir, "Master_Full_Voiceover.wav")
-                        try {
-                            masterTempFile.copyTo(persistentMasterFile, overwrite = true)
-                            latestMasterVoiceoverPath.value = persistentMasterFile.absolutePath
-                        } catch (e: Exception) {
-                            latestMasterVoiceoverPath.value = masterTempFile.absolutePath
-                        }
-                        val charTimestampsSnapshot = masterCharTimestamps.toMap()
-                        val sliced = sliceMasterAudioForScenes(scenes, sceneTexts, masterInfo, cacheDir, charTimestampsSnapshot)
-                        if (sliced != null && sliced.any { it != null }) {
-                            Log.d("VoiceSynthesis", "Successfully generated single-segment continuous narration ('ek khand speech') via Android Native TTS for ${scenes.size} scenes!")
-                            // Save master and sliced scene audio into permanent Saved Audio Library
-                            saveVoiceFileToSavedClips(
-                                sourceFile = persistentMasterFile,
-                                title = "Full Voiceover (${scenes.size} scenes)",
-                                engineTag = "Android Native TTS",
-                                voiceName = selectedVoiceName.value,
-                                scriptText = fullScriptText
-                            )
-                            sliced.forEachIndexed { sIdx, sFile ->
-                                if (sFile != null && sFile.exists() && sFile.length() > 44) {
-                                    val text = sceneTexts.getOrNull(sIdx)?.take(24) ?: "Scene ${sIdx + 1}"
-                                    saveVoiceFileToSavedClips(
-                                        sourceFile = sFile,
-                                        title = "Scene ${sIdx + 1}: $text",
-                                        engineTag = "Android Native TTS",
-                                        voiceName = selectedVoiceName.value,
-                                        scriptText = sceneTexts.getOrNull(sIdx) ?: ""
-                                    )
-                                }
-                            }
-                            progressCallback(1.0f)
-                            return sliced
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("VoiceSynthesis", "Unified Android Native TTS synthesis failed, falling back to per-scene synthesis", e)
-            }
-        }
-
+        // Synthesize each scene cleanly to its own dedicated audio file to ensure 0% sentence truncation or cutting
         for (i in scenes.indices) {
             val scene = scenes[i]
             val rawText = if (scene.narrationText.isNotBlank() && !isPlaceholderNarration(scene.narrationText)) scene.narrationText else ""
@@ -2304,6 +2275,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                     if (dbFile.exists() && dbFile.length() > 44) {
                         Log.d("VoiceCache", "Room AudioCache HIT for scene $i (voiceId=$currentVoiceId, hash=$voiceHash)")
                         dbFile.copyTo(file, overwrite = true)
+                        scene.customVoiceAudioPath = file.absolutePath
                         voiceFiles.add(file)
                         progressCallback((i + 1).toFloat() / scenes.size)
                         continue
@@ -2317,6 +2289,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                 Log.d("VoiceCache", "Disk Cache HIT for scene $i. Loading persistent wave copy...")
                 try {
                     cachedVoiceFile.copyTo(file, overwrite = true)
+                    scene.customVoiceAudioPath = file.absolutePath
                     voiceFiles.add(file)
                     progressCallback((i + 1).toFloat() / scenes.size)
                     continue
@@ -2388,6 +2361,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                         Log.e("VoiceCache", "Failed storing speech voice file/metadata to AudioCache database", e)
                     }
 
+                    scene.customVoiceAudioPath = file.absolutePath
                     voiceFiles.add(file)
                     val text = cleanedText.take(24)
                     saveVoiceFileToSavedClips(
@@ -2881,141 +2855,149 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
         onComplete: () -> Unit
     ) {
         viewModelScope.launch {
-            val sceneList = mutableListOf<Scene>()
-            for ((index, uriStr) in uris.withIndex()) {
-                val uri = android.net.Uri.parse(uriStr)
-                val isVideo = com.ritvyom.yashoraReelgenerator.presentation.utils.ReelVideoCompiler.isVideoPath(context, uriStr)
-                var resolvedPath = uriStr
-                if (uriStr.startsWith("content://")) {
-                    try {
-                        val ext = if (isVideo) "mp4" else "jpg"
-                        val mediaDir = java.io.File(context.filesDir, "user_media").apply { mkdirs() }
-                        val targetFile = java.io.File(mediaDir, "imported_${System.currentTimeMillis()}_$index.$ext")
-                        context.contentResolver.openInputStream(uri)?.use { input ->
-                            targetFile.outputStream().use { output ->
-                                input.copyTo(output)
-                            }
-                        }
-                        if (targetFile.exists() && targetFile.length() > 0) {
-                            resolvedPath = targetFile.absolutePath
-                        }
-                    } catch (e: Exception) {
-                        Log.e("MainViewModel", "Failed to cache imported media", e)
-                    }
-                }
-
-                var durationSeconds = 5
-                if (isVideo) {
-                    val retriever = android.media.MediaMetadataRetriever()
-                    try {
-                        if (resolvedPath.startsWith("/")) {
-                            retriever.setDataSource(resolvedPath)
-                        } else {
-                            retriever.setDataSource(context, uri)
-                        }
-                        val timeStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-                        if (!timeStr.isNullOrEmpty()) {
-                            val durationMs = timeStr.toLong()
-                            durationSeconds = (durationMs / 1000).toInt().coerceAtLeast(1)
-                        }
-                    } catch (e: Exception) {
-                        Log.e("MainViewModel", "Failed retrieve video duration", e)
-                        durationSeconds = 5
-                    } finally {
-                        try { retriever.release() } catch (e: Exception) {}
-                    }
-                }
-
-                sceneList.add(
-                    Scene(
-                        sceneNumber = index + 1,
-                        narrationText = "",
-                        visualPrompt = if (isVideo) "Imported Video" else "Imported Photo",
-                        subtitle = "",
-                        mediaPath = resolvedPath,
-                        mediaType = if (isVideo) "VIDEO" else "IMAGE",
-                        durationSeconds = durationSeconds,
-                        durationMs = durationSeconds * 1000L
-                    )
-                )
-            }
-
-            if (autoTranscribeCaptions) {
-                onProgress("🎙️ Transcribing speech from video clips...")
-                for ((idx, sc) in sceneList.withIndex()) {
-                    if (sc.mediaType == "VIDEO" && !sc.mediaPath.isNullOrBlank()) {
-                        onProgress("Listening to clip #${idx + 1}...")
+            try {
+                val sceneList = mutableListOf<Scene>()
+                for ((index, uriStr) in uris.withIndex()) {
+                    val uri = android.net.Uri.parse(uriStr)
+                    val isVideo = com.ritvyom.yashoraReelgenerator.presentation.utils.ReelVideoCompiler.isVideoPath(context, uriStr)
+                    var resolvedPath = uriStr
+                    if (uriStr.startsWith("content://")) {
                         try {
-                            val res = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.transcribeVideoAudio(
-                                context = context,
-                                mediaPath = sc.mediaPath ?: "",
-                                preferredLanguage = transcribeLanguage,
-                                maxDurationMs = (sc.durationSeconds * 1000L).coerceIn(5000L, 90000L),
-                                onProgress = onProgress
-                            )
-                            if (res.isSuccess && res.fullTranscript.isNotBlank()) {
-                                val isHindi = res.detectedLanguage.contains("Hindi", ignoreCase = true) ||
-                                        res.fullTranscript.any { it in '\u0900'..'\u097F' }
-                                sceneList[idx] = sc.copy(
-                                    subtitle = res.fullTranscript,
-                                    narrationText = res.fullTranscript,
-                                    dynamicCaptionStyle = "Hormozi",
-                                    dynamicCaptionHighlightColor = "#FFEB3B",
-                                    dynamicCaptionAnimation = "WordByWord",
-                                    captionFont = if (isHindi) "Devanagari Bold" else "TikTok Style"
-                                ).apply {
-                                    this.srtCaptions = res.srtContent
-                                    this.isDynamicCaptionsEnabled = true
+                            val ext = if (isVideo) "mp4" else "jpg"
+                            val mediaDir = java.io.File(context.filesDir, "user_media").apply { mkdirs() }
+                            val targetFile = java.io.File(mediaDir, "imported_${System.currentTimeMillis()}_$index.$ext")
+                            context.contentResolver.openInputStream(uri)?.use { input ->
+                                targetFile.outputStream().use { output ->
+                                    input.copyTo(output)
                                 }
                             }
+                            if (targetFile.exists() && targetFile.length() > 0) {
+                                resolvedPath = targetFile.absolutePath
+                            }
                         } catch (e: Exception) {
-                            Log.w("MainViewModel", "Auto-transcribe failed for imported clip $idx: ${e.message}")
+                            Log.e("MainViewModel", "Failed to cache imported media", e)
+                        }
+                    }
+
+                    var durationSeconds = 5
+                    if (isVideo) {
+                        val retriever = android.media.MediaMetadataRetriever()
+                        try {
+                            if (resolvedPath.startsWith("/")) {
+                                retriever.setDataSource(resolvedPath)
+                            } else {
+                                retriever.setDataSource(context, uri)
+                            }
+                            val timeStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                            if (!timeStr.isNullOrEmpty()) {
+                                val durationMs = timeStr.toLong()
+                                durationSeconds = (durationMs / 1000).toInt().coerceAtLeast(1)
+                            }
+                        } catch (e: Exception) {
+                            Log.e("MainViewModel", "Failed retrieve video duration", e)
+                            durationSeconds = 5
+                        } finally {
+                            try { retriever.release() } catch (e: Exception) {}
+                        }
+                    }
+
+                    sceneList.add(
+                        Scene(
+                            sceneNumber = index + 1,
+                            narrationText = "",
+                            visualPrompt = if (isVideo) "Imported Video" else "Imported Photo",
+                            subtitle = "",
+                            mediaPath = resolvedPath,
+                            mediaType = if (isVideo) "VIDEO" else "IMAGE",
+                            durationSeconds = durationSeconds,
+                            durationMs = durationSeconds * 1000L
+                        )
+                    )
+                }
+
+                if (autoTranscribeCaptions) {
+                    onProgress("🎙️ Transcribing speech from video clips...")
+                    for ((idx, sc) in sceneList.withIndex()) {
+                        if (sc.mediaType == "VIDEO" && !sc.mediaPath.isNullOrBlank()) {
+                            onProgress("Listening to clip #${idx + 1}...")
+                            try {
+                                val res = kotlinx.coroutines.withTimeoutOrNull(35_000L) {
+                                    com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.transcribeVideoAudio(
+                                        context = context,
+                                        mediaPath = sc.mediaPath ?: "",
+                                        preferredLanguage = transcribeLanguage,
+                                        maxDurationMs = (sc.durationSeconds * 1000L).coerceIn(5000L, 90000L),
+                                        onProgress = onProgress
+                                    )
+                                }
+                                if (res != null && res.isSuccess && res.fullTranscript.isNotBlank()) {
+                                    val isHindi = res.detectedLanguage.contains("Hindi", ignoreCase = true) ||
+                                            res.fullTranscript.any { it in '\u0900'..'\u097F' }
+                                    val punchySegs = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.subdivideLongSegments(res.segments)
+                                    val finalSrt = if (res.srtContent.isNotBlank()) res.srtContent else com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.segmentsToSrt(punchySegs)
+                                    sceneList[idx] = sc.copy(
+                                        subtitle = res.fullTranscript,
+                                        narrationText = "",
+                                        dynamicCaptionStyle = "Hormozi",
+                                        dynamicCaptionHighlightColor = "#FFEB3B",
+                                        dynamicCaptionAnimation = "WordByWord",
+                                        captionFont = if (isHindi) "Devanagari Bold" else "TikTok Style"
+                                    ).apply {
+                                        this.srtCaptions = finalSrt
+                                        this.isDynamicCaptionsEnabled = true
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.w("MainViewModel", "Auto-transcribe failed for imported clip $idx: ${e.message}")
+                            }
                         }
                     }
                 }
-            }
 
-            if (sceneList.isEmpty()) {
-                sceneList.add(
-                    Scene(
-                        sceneNumber = 1,
-                        narrationText = "",
-                        visualPrompt = "Blank Canvas",
-                        subtitle = "Clip #1",
-                        mediaPath = null,
-                        mediaType = "IMAGE",
-                        durationSeconds = 5,
-                        durationMs = 5000L
+                if (sceneList.isEmpty()) {
+                    sceneList.add(
+                        Scene(
+                            sceneNumber = 1,
+                            narrationText = "",
+                            visualPrompt = "Blank Canvas",
+                            subtitle = "Clip #1",
+                            mediaPath = null,
+                            mediaType = "IMAGE",
+                            durationSeconds = 5,
+                            durationMs = 5000L
+                        )
                     )
-                )
-            }
+                }
 
-            // Create project in DB
-            val entity = ProjectEntity(
-                title = title,
-                scriptText = "",
-                videoStyle = "Cinematic",
-                voiceName = "Professional Man",
-                voiceCategory = "Male",
-                language = "English",
-                aspectRatio = selectedAspectRatio.value,
-                resolution = selectedResolution.value,
-                fps = selectedFps.value,
-                bgMusicCategory = "Cinematic",
-                bgMusicVolume = 0.0f, // Mute background music for direct video edit timeline by default
-                voiceVolume = 1.0f,
-                status = "Draft",
-                scenesJson = scenesAdapter.toJson(sceneList),
-                topicContext = "Direct Editor",
-                publishingStyle = "TikTok / Instagram Reels"
-            )
-            val projId = repository.insertProject(entity)
-            activeProject.value = entity.copy(id = projId.toInt())
-            activeScenes.value = sceneList
-            selectedSceneIndex.value = 0
-            
-            withContext(Dispatchers.Main) {
-                onComplete()
+                // Create project in DB
+                val entity = ProjectEntity(
+                    title = title,
+                    scriptText = "",
+                    videoStyle = "Cinematic",
+                    voiceName = "Professional Man",
+                    voiceCategory = "Male",
+                    language = "English",
+                    aspectRatio = selectedAspectRatio.value,
+                    resolution = selectedResolution.value,
+                    fps = selectedFps.value,
+                    bgMusicCategory = "Cinematic",
+                    bgMusicVolume = 0.0f,
+                    voiceVolume = 1.0f,
+                    status = "Draft",
+                    scenesJson = scenesAdapter.toJson(sceneList),
+                    topicContext = "Direct Editor",
+                    publishingStyle = "TikTok / Instagram Reels"
+                )
+                val projId = repository.insertProject(entity)
+                activeProject.value = entity.copy(id = projId.toInt())
+                activeScenes.value = sceneList
+                selectedSceneIndex.value = 0
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "createDirectEditProject encountered exception", e)
+            } finally {
+                withContext(Dispatchers.Main) {
+                    onComplete()
+                }
             }
         }
     }
@@ -3027,14 +3009,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
         onComplete: () -> Unit
     ) {
         viewModelScope.launch {
-            val isHindi = title.any { it in '\u0900'..'\u097F' }
+            val isHindi = title.any { it in '\u0900'..'\u097F' } || selectedLanguage.value.contains("Hindi", ignoreCase = true)
+            val langString = if (isHindi) "Hindi" else "English"
+            selectedLanguage.value = langString
+            if (isHindi) {
+                selectedVoiceName.value = "Kavya"
+                selectedVoiceCategory.value = "Female"
+            }
             val entity = ProjectEntity(
                 title = title,
                 scriptText = scriptText,
                 videoStyle = "Cinematic News",
                 voiceName = if (isHindi) "Kavya" else "Professional Man",
                 voiceCategory = if (isHindi) "Female" else "Male",
-                language = if (isHindi) "Hindi" else "English",
+                language = langString,
                 aspectRatio = selectedAspectRatio.value,
                 resolution = selectedResolution.value,
                 fps = selectedFps.value,
@@ -3055,6 +3043,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
 
             withContext(Dispatchers.Main) {
                 onComplete()
+            }
+
+            // Immediately pre-synthesize narration voice tracks in the background
+            // so audio files are created, attached to scenes, and visible on the editor timeline!
+            launch(Dispatchers.IO) {
+                try {
+                    Log.d("VoiceSynthesis", "Pre-synthesizing voice tracks for draft variation...")
+                    val voiceFiles = synthesizeVoiceForScenes(scenes, getApplication<Application>().cacheDir) { _ -> }
+                    val updatedScenes = scenes.mapIndexed { idx, sc ->
+                        val vf = voiceFiles.getOrNull(idx)
+                        if (vf != null && vf.exists() && vf.length() > 44) {
+                            sc.copy(customVoiceAudioPath = vf.absolutePath)
+                        } else sc
+                    }
+                    // Simultaneously resolve visual media for any scenes that need distinct visuals
+                    val usedUrls = mutableSetOf<String>()
+                    updatedScenes.forEach { if (!it.mediaPath.isNullOrEmpty()) usedUrls.add(it.mediaPath!!) }
+
+                    val scenesWithMedia = updatedScenes.mapIndexed { idx, sc ->
+                        if (sc.mediaPath.isNullOrBlank()) {
+                            try {
+                                val kw = sc.keywords.firstOrNull() ?: sc.visualPrompt
+                                val res = repository.resolveVisualAssetResolution(
+                                    query = kw,
+                                    style = entity.videoStyle,
+                                    aspectRatio = entity.aspectRatio,
+                                    index = idx,
+                                    visualMedium = selectedVisualMedium.value,
+                                    imageSource = selectedImageSource.value,
+                                    visualPrompt = sc.visualPrompt,
+                                    publishingStyle = entity.publishingStyle,
+                                    alreadyUsedUrls = usedUrls
+                                )
+                                if (res.isSuccess && res.url.isNotEmpty()) {
+                                    usedUrls.add(res.url)
+                                    val localPath = if (res.url.startsWith("http")) repository.downloadMediaToLocal(res.url) else res.url
+                                    sc.copy(
+                                        mediaPath = if (localPath.isNotEmpty()) localPath else res.url,
+                                        remoteUrl = res.url,
+                                        mediaSourceUsed = res.sourceUsed,
+                                        mediaFetchStatus = "SUCCESS"
+                                    )
+                                } else sc
+                            } catch (e: Exception) {
+                                sc
+                            }
+                        } else sc
+                    }
+
+                    activeScenes.value = scenesWithMedia
+                    val finalEntity = entity.copy(id = projId.toInt(), scenesJson = scenesAdapter.toJson(scenesWithMedia))
+                    repository.updateProject(finalEntity)
+                    activeProject.value = finalEntity
+                    Log.d("VoiceSynthesis", "Pre-synthesis complete: attached voice files and resolved visuals for ${scenesWithMedia.size} scenes")
+                } catch (e: Exception) {
+                    Log.w("VoiceSynthesis", "Draft variation voice pre-synthesis warning", e)
+                }
             }
         }
     }
@@ -3293,6 +3338,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                     if (decoded != null && decoded.isNotEmpty()) {
                         activeScenes.value = decoded
                         selectedSceneIndex.value = 0
+                        val existingVoice = decoded.firstOrNull { !it.customVoiceAudioPath.isNullOrBlank() && File(it.customVoiceAudioPath!!).exists() }
+                        if (existingVoice != null && latestMasterVoiceoverPath.value.isNullOrBlank()) {
+                            latestMasterVoiceoverPath.value = existingVoice.customVoiceAudioPath
+                        }
                         return@launch
                     }
                 }
@@ -3513,63 +3562,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
     val canUndo = commandManager.canUndo
     val canRedo = commandManager.canRedo
     val lastActionName = commandManager.lastActionName
+    val undoCount = commandManager.undoCount
+    val redoCount = commandManager.redoCount
+
+    fun beginTimelineGesture(actionName: String = "Trim Clip") {
+        commandManager.beginTransaction(actionName, activeScenes.value)
+    }
+
+    fun commitTimelineGesture() {
+        commandManager.commitTransaction(activeScenes.value)
+    }
+
+    fun cancelTimelineGesture() {
+        commandManager.cancelTransaction()
+    }
 
     fun pushToUndo(actionName: String = "Edit Timeline") {
         commandManager.recordState(activeScenes.value, actionName)
-        val canonical = com.ritvyom.yashoraReelgenerator.engine.YashoraEngineBridge.createCanonicalTimeline(
-            scenes = activeScenes.value,
-            aspectRatioStr = selectedAspectRatio.value
-        )
-        timelineUndoRedoManager.beginTransaction(actionName, canonical)
     }
 
     fun commitTimelineTransaction(actionName: String = "Edit Timeline") {
-        val canonical = com.ritvyom.yashoraReelgenerator.engine.YashoraEngineBridge.createCanonicalTimeline(
-            scenes = activeScenes.value,
-            aspectRatioStr = selectedAspectRatio.value
-        )
-        timelineUndoRedoManager.commitTransaction(canonical)
+        commandManager.commitTransaction(activeScenes.value)
     }
 
     fun undo() {
-        val currentCanonical = com.ritvyom.yashoraReelgenerator.engine.YashoraEngineBridge.createCanonicalTimeline(
-            scenes = activeScenes.value,
-            aspectRatioStr = selectedAspectRatio.value
-        )
-        val restoredCanonical = timelineUndoRedoManager.undo(currentCanonical)
-        if (restoredCanonical != null) {
-            val restoredScenes = com.ritvyom.yashoraReelgenerator.engine.YashoraEngineBridge.convertToScenes(
-                timeline = restoredCanonical,
-                referenceScenes = activeScenes.value
-            )
-            activeScenes.value = restoredScenes
+        commandManager.undo(activeScenes.value) { restored, actionName ->
+            activeScenes.value = restored
+            selectedSceneIndex.value = selectedSceneIndex.value.coerceIn(0, maxOf(0, restored.size - 1))
             saveCurrentScenesToDb()
-        } else {
-            commandManager.undo(activeScenes.value) { restored ->
-                activeScenes.value = restored
-                saveCurrentScenesToDb()
-            }
         }
     }
 
     fun redo() {
-        val currentCanonical = com.ritvyom.yashoraReelgenerator.engine.YashoraEngineBridge.createCanonicalTimeline(
-            scenes = activeScenes.value,
-            aspectRatioStr = selectedAspectRatio.value
-        )
-        val restoredCanonical = timelineUndoRedoManager.redo(currentCanonical)
-        if (restoredCanonical != null) {
-            val restoredScenes = com.ritvyom.yashoraReelgenerator.engine.YashoraEngineBridge.convertToScenes(
-                timeline = restoredCanonical,
-                referenceScenes = activeScenes.value
-            )
-            activeScenes.value = restoredScenes
+        commandManager.redo(activeScenes.value) { restored, actionName ->
+            activeScenes.value = restored
+            selectedSceneIndex.value = selectedSceneIndex.value.coerceIn(0, maxOf(0, restored.size - 1))
             saveCurrentScenesToDb()
-        } else {
-            commandManager.redo(activeScenes.value) { restored ->
-                activeScenes.value = restored
-                saveCurrentScenesToDb()
-            }
         }
     }
 
@@ -3587,11 +3615,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
         val currentList = activeScenes.value.toMutableList()
         if (index in currentList.indices) {
             val oldScene = currentList[index]
-            val shouldSyncNarration = oldScene.narrationText.isBlank() || oldScene.narrationText == oldScene.subtitle
+            val isVideo = oldScene.mediaType.equals("VIDEO", ignoreCase = true) ||
+                    oldScene.visualPrompt.contains("Imported", ignoreCase = true) ||
+                    oldScene.mediaPath?.contains("user_media") == true ||
+                    com.ritvyom.yashoraReelgenerator.presentation.utils.ReelVideoCompiler.isVideoPath(getApplication(), oldScene.mediaPath ?: "")
+            val shouldSyncNarration = !isVideo && (oldScene.narrationText.isBlank() || oldScene.narrationText == oldScene.subtitle)
+            val totalSec = if (oldScene.durationMs > 0) oldScene.durationMs / 1000f else oldScene.durationSeconds.toFloat().coerceAtLeast(1f)
+            val autoSegs = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.splitTextIntoTimedSegments(newText, totalSec)
+            val punchySegs = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.subdivideLongSegments(autoSegs)
+            val autoSrt = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.segmentsToSrt(punchySegs)
+
             currentList[index] = oldScene.copy(
                 subtitle = newText,
-                narrationText = if (shouldSyncNarration) newText else oldScene.narrationText
-            )
+                narrationText = if (isVideo) "" else if (shouldSyncNarration) newText else oldScene.narrationText
+            ).apply {
+                if (newText.isNotBlank()) {
+                    this.srtCaptions = autoSrt
+                }
+            }
             activeScenes.value = currentList
             saveCurrentScenesToDb()
         }
@@ -4675,8 +4716,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
         val currentList = activeScenes.value.toMutableList()
         if (applyToAll) {
             currentList.forEachIndexed { idx, old ->
+                val totalSec = if (old.durationMs > 0) old.durationMs / 1000f else old.durationSeconds.toFloat().coerceAtLeast(1f)
+                val isVideo = old.mediaType.equals("VIDEO", ignoreCase = true) ||
+                        old.visualPrompt.contains("Imported", ignoreCase = true) ||
+                        com.ritvyom.yashoraReelgenerator.presentation.utils.ReelVideoCompiler.isVideoPath(getApplication(), old.mediaPath ?: "")
+
+                val effectiveSrt = when {
+                    idx == index && srtCaptions.isNotBlank() -> {
+                        val parsed = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.parseSrt(srtCaptions)
+                        val punchy = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.subdivideLongSegments(parsed)
+                        com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.segmentsToSrt(punchy)
+                    }
+                    old.srtCaptions.isNotBlank() -> {
+                        val parsed = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.parseSrt(old.srtCaptions)
+                        val punchy = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.subdivideLongSegments(parsed)
+                        com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.segmentsToSrt(punchy)
+                    }
+                    subtitle.isNotBlank() -> {
+                        val segs = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.splitTextIntoTimedSegments(subtitle, totalSec)
+                        val punchy = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.subdivideLongSegments(segs)
+                        com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.segmentsToSrt(punchy)
+                    }
+                    else -> ""
+                }
+
                 val updated = old.copy(
                     subtitle = if (idx == index) subtitle else old.subtitle,
+                    narrationText = if (isVideo) "" else old.narrationText,
                     subtitleColor = textColor,
                     captionFont = font
                 ).apply {
@@ -4686,16 +4752,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                     this.isDynamicCaptionsEnabled = true
                     this.captionFont = font
                     this.subtitleColor = textColor
-                    if (idx == index && srtCaptions.isNotBlank()) {
-                        this.srtCaptions = srtCaptions
+                    if (effectiveSrt.isNotBlank()) {
+                        this.srtCaptions = effectiveSrt
                     }
                 }
                 currentList[idx] = updated
             }
         } else if (index in currentList.indices) {
             val old = currentList[index]
+            val totalSec = if (old.durationMs > 0) old.durationMs / 1000f else old.durationSeconds.toFloat().coerceAtLeast(1f)
+            val isVideo = old.mediaType.equals("VIDEO", ignoreCase = true) ||
+                    old.visualPrompt.contains("Imported", ignoreCase = true) ||
+                    com.ritvyom.yashoraReelgenerator.presentation.utils.ReelVideoCompiler.isVideoPath(getApplication(), old.mediaPath ?: "")
+
+            val effectiveSrt = when {
+                srtCaptions.isNotBlank() -> {
+                    val parsed = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.parseSrt(srtCaptions)
+                    val punchy = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.subdivideLongSegments(parsed)
+                    com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.segmentsToSrt(punchy)
+                }
+                old.srtCaptions.isNotBlank() -> {
+                    val parsed = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.parseSrt(old.srtCaptions)
+                    val punchy = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.subdivideLongSegments(parsed)
+                    com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.segmentsToSrt(punchy)
+                }
+                subtitle.isNotBlank() -> {
+                    val segs = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.splitTextIntoTimedSegments(subtitle, totalSec)
+                    val punchy = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.subdivideLongSegments(segs)
+                    com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.segmentsToSrt(punchy)
+                }
+                else -> ""
+            }
+
             val updated = old.copy(
                 subtitle = subtitle,
+                narrationText = if (isVideo) "" else old.narrationText,
                 subtitleColor = textColor,
                 captionFont = font
             ).apply {
@@ -4705,8 +4796,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                 this.isDynamicCaptionsEnabled = true
                 this.captionFont = font
                 this.subtitleColor = textColor
-                if (srtCaptions.isNotBlank()) {
-                    this.srtCaptions = srtCaptions
+                if (effectiveSrt.isNotBlank()) {
+                    this.srtCaptions = effectiveSrt
                 }
             }
             currentList[index] = updated
@@ -4715,6 +4806,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
         saveCurrentScenesToDb()
     }
 
+    private val isTranscriptionInProgress = java.util.concurrent.atomic.AtomicBoolean(false)
+
     fun transcribeSceneAudio(
         index: Int,
         preferredLanguage: String,
@@ -4722,63 +4815,106 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
         onProgress: (String) -> Unit = {},
         onComplete: (Boolean, String, String) -> Unit
     ) {
+        if (!isTranscriptionInProgress.compareAndSet(false, true)) {
+            Log.w("MainViewModel", "Transcription already in progress. Ignoring duplicate trigger.")
+            onComplete(false, "Transcription already running. Please wait...", "")
+            return
+        }
         viewModelScope.launch {
-            val currentList = activeScenes.value
-            if (index !in currentList.indices) {
-                onComplete(false, "Invalid scene selected", "")
-                return@launch
-            }
-            val scene = currentList[index]
-            val audioSource = when {
-                !scene.customVoiceAudioPath.isNullOrBlank() -> scene.customVoiceAudioPath
-                !scene.mediaPath.isNullOrBlank() -> scene.mediaPath
-                !scene.remoteUrl.isNullOrBlank() -> scene.remoteUrl
-                else -> null
-            }
-            if (audioSource.isNullOrBlank()) {
-                onComplete(false, "No video or audio narration found in this clip to transcribe", "")
-                return@launch
-            }
-
-            val result = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.transcribeVideoAudio(
-                context = context,
-                mediaPath = audioSource,
-                preferredLanguage = preferredLanguage,
-                maxDurationMs = (scene.durationSeconds * 1000L).coerceAtLeast(30000L),
-                onProgress = onProgress
-            )
-
-            if (result.isSuccess && result.fullTranscript.isNotBlank()) {
-                pushToUndo()
-                val updatedList = activeScenes.value.toMutableList()
-                if (index in updatedList.indices) {
-                    val old = updatedList[index]
-                    val isHindi = result.detectedLanguage.contains("Hindi", ignoreCase = true) ||
-                            result.fullTranscript.any { it in '\u0900'..'\u097F' }
-                    val chosenFont = if (old.captionFont.isNotBlank()) old.captionFont else (if (isHindi) "Devanagari Bold" else "TikTok Style")
-                    val chosenStyle = if (old.dynamicCaptionStyle.isNotBlank()) old.dynamicCaptionStyle else "Hormozi"
-                    val chosenColor = if (old.dynamicCaptionHighlightColor.isNotBlank()) old.dynamicCaptionHighlightColor else "#FFEB3B"
-                    val chosenAnim = if (old.dynamicCaptionAnimation.isNotBlank()) old.dynamicCaptionAnimation else "WordByWord"
-                    val srtText = if (result.srtContent.isNotBlank()) result.srtContent else com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.segmentsToSrt(result.segments)
-
-                    val updated = old.copy(
-                        subtitle = result.fullTranscript,
-                        narrationText = if (old.narrationText.isBlank()) result.fullTranscript else old.narrationText,
-                        dynamicCaptionStyle = chosenStyle,
-                        dynamicCaptionHighlightColor = chosenColor,
-                        dynamicCaptionAnimation = chosenAnim,
-                        captionFont = chosenFont
-                    ).apply {
-                        this.srtCaptions = srtText
-                        this.isDynamicCaptionsEnabled = true
+            try {
+                val currentList = activeScenes.value
+                if (index !in currentList.indices) {
+                    withContext(Dispatchers.Main) {
+                        onComplete(false, "Invalid scene selected", "")
                     }
-                    updatedList[index] = updated
-                    activeScenes.value = updatedList
-                    saveCurrentScenesToDb()
+                    return@launch
                 }
-                onComplete(true, result.fullTranscript, result.detectedLanguage)
-            } else {
-                onComplete(false, result.errorMessage ?: "Speech could not be transcribed", "")
+                val scene = currentList[index]
+                val audioSource = when {
+                    !scene.customVoiceAudioPath.isNullOrBlank() -> scene.customVoiceAudioPath
+                    !scene.mediaPath.isNullOrBlank() -> scene.mediaPath
+                    !scene.remoteUrl.isNullOrBlank() -> scene.remoteUrl
+                    else -> null
+                }
+                if (audioSource.isNullOrBlank()) {
+                    withContext(Dispatchers.Main) {
+                        onComplete(false, "No video or audio narration found in this clip to transcribe", "")
+                    }
+                    return@launch
+                }
+
+                val result = kotlinx.coroutines.withTimeoutOrNull(60_000L) {
+                    com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.transcribeVideoAudio(
+                        context = context,
+                        mediaPath = audioSource,
+                        preferredLanguage = preferredLanguage,
+                        maxDurationMs = (scene.durationSeconds * 1000L).coerceAtLeast(30000L),
+                        onProgress = onProgress
+                    )
+                } ?: com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.TranscriptionResult(
+                    isSuccess = false,
+                    fullTranscript = "",
+                    detectedLanguage = "",
+                    segments = emptyList(),
+                    errorMessage = "Transcription timed out after 60 seconds. Please check network connection."
+                )
+
+                if (result.isSuccess && result.fullTranscript.isNotBlank()) {
+                    pushToUndo()
+                    val updatedList = activeScenes.value.toMutableList()
+                    if (index in updatedList.indices) {
+                        val old = updatedList[index]
+                        val isHindi = result.detectedLanguage.contains("Hindi", ignoreCase = true) ||
+                                result.fullTranscript.any { it in '\u0900'..'\u097F' }
+                        val chosenFont = if (old.captionFont.isNotBlank()) old.captionFont else (if (isHindi) "Devanagari Bold" else "TikTok Style")
+                        val chosenStyle = if (old.dynamicCaptionStyle.isNotBlank()) old.dynamicCaptionStyle else "Hormozi"
+                        val chosenColor = if (old.dynamicCaptionHighlightColor.isNotBlank()) old.dynamicCaptionHighlightColor else "#FFEB3B"
+                        val chosenAnim = if (old.dynamicCaptionAnimation.isNotBlank()) old.dynamicCaptionAnimation else "WordByWord"
+
+                        val totalSec = if (old.durationMs > 0) old.durationMs / 1000f else old.durationSeconds.toFloat().coerceAtLeast(1f)
+                        val rawSegs = when {
+                            result.segments.isNotEmpty() -> result.segments
+                            result.srtContent.isNotBlank() -> com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.parseSrt(result.srtContent)
+                            else -> com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.splitTextIntoTimedSegments(result.fullTranscript, totalSec)
+                        }
+                        val punchySegs = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.subdivideLongSegments(rawSegs)
+                        val srtText = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.segmentsToSrt(punchySegs)
+
+                        val isVideo = old.mediaType.equals("VIDEO", ignoreCase = true) ||
+                                old.visualPrompt.contains("Imported", ignoreCase = true) ||
+                                com.ritvyom.yashoraReelgenerator.presentation.utils.ReelVideoCompiler.isVideoPath(getApplication(), old.mediaPath ?: "")
+
+                        val updated = old.copy(
+                            subtitle = result.fullTranscript,
+                            // If it's a video clip (imported or recorded), do NOT set narrationText so no TTS voiceover is created!
+                            narrationText = if (isVideo) "" else old.narrationText,
+                            dynamicCaptionStyle = chosenStyle,
+                            dynamicCaptionHighlightColor = chosenColor,
+                            dynamicCaptionAnimation = chosenAnim,
+                            captionFont = chosenFont
+                        ).apply {
+                            this.srtCaptions = srtText
+                            this.isDynamicCaptionsEnabled = true
+                        }
+                        updatedList[index] = updated
+                        activeScenes.value = updatedList
+                        saveCurrentScenesToDb()
+                    }
+                    withContext(Dispatchers.Main) {
+                        onComplete(true, result.fullTranscript, result.detectedLanguage)
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        onComplete(false, result.errorMessage ?: "Speech could not be transcribed", "")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "transcribeSceneAudio failed", e)
+                withContext(Dispatchers.Main) {
+                    onComplete(false, e.message ?: "Transcription failed", "")
+                }
+            } finally {
+                isTranscriptionInProgress.set(false)
             }
         }
     }
@@ -4789,62 +4925,95 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
         onProgress: (String) -> Unit = {},
         onComplete: (Int, Int) -> Unit
     ) {
+        if (!isTranscriptionInProgress.compareAndSet(false, true)) {
+            Log.w("MainViewModel", "Transcription already in progress. Ignoring duplicate trigger.")
+            onComplete(0, 0)
+            return
+        }
         viewModelScope.launch {
-            val list = activeScenes.value
             var successCount = 0
             var attemptedCount = 0
-            val updatedList = list.toMutableList()
-            pushToUndo()
+            try {
+                val list = activeScenes.value
+                val updatedList = list.toMutableList()
+                pushToUndo()
 
-            for ((idx, sc) in list.withIndex()) {
-                val audioSource = when {
-                    !sc.customVoiceAudioPath.isNullOrBlank() -> sc.customVoiceAudioPath
-                    !sc.mediaPath.isNullOrBlank() -> sc.mediaPath
-                    !sc.remoteUrl.isNullOrBlank() -> sc.remoteUrl
-                    else -> null
-                }
-                val hasAudio = sc.mediaType == "VIDEO" || !sc.customVoiceAudioPath.isNullOrBlank() || audioSource?.endsWith(".mp4", ignoreCase = true) == true
-                if (hasAudio && !audioSource.isNullOrBlank()) {
-                    attemptedCount++
-                    onProgress("Transcribing clip ${idx + 1}/${list.size}...")
-                    val result = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.transcribeVideoAudio(
-                        context = context,
-                        mediaPath = audioSource,
-                        preferredLanguage = preferredLanguage,
-                        maxDurationMs = (sc.durationSeconds * 1000L).coerceIn(5000L, 90000L)
-                    )
-                    if (result.isSuccess && result.fullTranscript.isNotBlank()) {
-                        successCount++
-                        val old = updatedList[idx]
-                        val isHindi = result.detectedLanguage.contains("Hindi", ignoreCase = true) ||
-                                result.fullTranscript.any { it in '\u0900'..'\u097F' }
-                        val chosenFont = if (old.captionFont.isNotBlank()) old.captionFont else (if (isHindi) "Devanagari Bold" else "TikTok Style")
-                        val chosenStyle = if (old.dynamicCaptionStyle.isNotBlank()) old.dynamicCaptionStyle else "Hormozi"
-                        val chosenColor = if (old.dynamicCaptionHighlightColor.isNotBlank()) old.dynamicCaptionHighlightColor else "#FFEB3B"
-                        val chosenAnim = if (old.dynamicCaptionAnimation.isNotBlank()) old.dynamicCaptionAnimation else "WordByWord"
-                        val srtText = if (result.srtContent.isNotBlank()) result.srtContent else com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.segmentsToSrt(result.segments)
+                for ((idx, sc) in list.withIndex()) {
+                    val audioSource = when {
+                        !sc.customVoiceAudioPath.isNullOrBlank() -> sc.customVoiceAudioPath
+                        !sc.mediaPath.isNullOrBlank() -> sc.mediaPath
+                        !sc.remoteUrl.isNullOrBlank() -> sc.remoteUrl
+                        else -> null
+                    }
+                    val hasAudio = sc.mediaType == "VIDEO" || !sc.customVoiceAudioPath.isNullOrBlank() || audioSource?.endsWith(".mp4", ignoreCase = true) == true
+                    if (hasAudio && !audioSource.isNullOrBlank()) {
+                        attemptedCount++
+                        onProgress("Transcribing clip ${idx + 1}/${list.size}...")
+                        val result = kotlinx.coroutines.withTimeoutOrNull(40_000L) {
+                            com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.transcribeVideoAudio(
+                                context = context,
+                                mediaPath = audioSource,
+                                preferredLanguage = preferredLanguage,
+                                maxDurationMs = (sc.durationSeconds * 1000L).coerceIn(5000L, 90000L)
+                            )
+                        } ?: com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.TranscriptionResult(
+                            isSuccess = false,
+                            fullTranscript = "",
+                            detectedLanguage = "",
+                            segments = emptyList(),
+                            errorMessage = "Timeout on clip ${idx + 1}"
+                        )
+                        if (result.isSuccess && result.fullTranscript.isNotBlank()) {
+                            successCount++
+                            val old = updatedList[idx]
+                            val isHindi = result.detectedLanguage.contains("Hindi", ignoreCase = true) ||
+                                    result.fullTranscript.any { it in '\u0900'..'\u097F' }
+                            val chosenFont = if (old.captionFont.isNotBlank()) old.captionFont else (if (isHindi) "Devanagari Bold" else "TikTok Style")
+                            val chosenStyle = if (old.dynamicCaptionStyle.isNotBlank()) old.dynamicCaptionStyle else "Hormozi"
+                            val chosenColor = if (old.dynamicCaptionHighlightColor.isNotBlank()) old.dynamicCaptionHighlightColor else "#FFEB3B"
+                            val chosenAnim = if (old.dynamicCaptionAnimation.isNotBlank()) old.dynamicCaptionAnimation else "WordByWord"
 
-                        val updated = old.copy(
-                            subtitle = result.fullTranscript,
-                            narrationText = if (old.narrationText.isBlank()) result.fullTranscript else old.narrationText,
-                            dynamicCaptionStyle = chosenStyle,
-                            dynamicCaptionHighlightColor = chosenColor,
-                            dynamicCaptionAnimation = chosenAnim,
-                            captionFont = chosenFont
-                        ).apply {
-                            this.srtCaptions = srtText
-                            this.isDynamicCaptionsEnabled = true
+                            val totalSec = if (old.durationMs > 0) old.durationMs / 1000f else old.durationSeconds.toFloat().coerceAtLeast(1f)
+                            val rawSegs = when {
+                                result.segments.isNotEmpty() -> result.segments
+                                result.srtContent.isNotBlank() -> com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.parseSrt(result.srtContent)
+                                else -> com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.splitTextIntoTimedSegments(result.fullTranscript, totalSec)
+                            }
+                            val punchySegs = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.subdivideLongSegments(rawSegs)
+                            val srtText = com.ritvyom.yashoraReelgenerator.presentation.utils.VideoSpeechTranscriptionEngine.segmentsToSrt(punchySegs)
+
+                            val isVideo = old.mediaType.equals("VIDEO", ignoreCase = true) ||
+                                    old.visualPrompt.contains("Imported", ignoreCase = true) ||
+                                    com.ritvyom.yashoraReelgenerator.presentation.utils.ReelVideoCompiler.isVideoPath(getApplication(), old.mediaPath ?: "")
+
+                            val updated = old.copy(
+                                subtitle = result.fullTranscript,
+                                narrationText = if (isVideo) "" else old.narrationText,
+                                dynamicCaptionStyle = chosenStyle,
+                                dynamicCaptionHighlightColor = chosenColor,
+                                dynamicCaptionAnimation = chosenAnim,
+                                captionFont = chosenFont
+                            ).apply {
+                                this.srtCaptions = srtText
+                                this.isDynamicCaptionsEnabled = true
+                            }
+                            updatedList[idx] = updated
                         }
-                        updatedList[idx] = updated
                     }
                 }
-            }
 
-            if (successCount > 0) {
-                activeScenes.value = updatedList
-                saveCurrentScenesToDb()
+                if (successCount > 0) {
+                    activeScenes.value = updatedList
+                    saveCurrentScenesToDb()
+                }
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "transcribeAllVideoScenes failed", e)
+            } finally {
+                isTranscriptionInProgress.set(false)
+                withContext(Dispatchers.Main) {
+                    onComplete(successCount, attemptedCount)
+                }
             }
-            onComplete(successCount, attemptedCount)
         }
     }
 
@@ -5095,18 +5264,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                             if (isVideo) "Video clip applied to scene #${index + 1}!".localize(appLanguage.value) else "Photo applied to scene #${index + 1}!".localize(appLanguage.value),
                             android.widget.Toast.LENGTH_SHORT
                         ).show()
-
-                        if (isVideo) {
-                            transcribeSceneAudio(index = index, preferredLanguage = "Auto", context = context) { success, _, _ ->
-                                if (success) {
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        "✨ Dynamic captions added from video speech!".localize(appLanguage.value),
-                                        android.widget.Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            }
-                        }
                     }
                 }
             } catch (e: Exception) {
@@ -5552,12 +5709,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                 generationStatus.value = "Checking Firestore Cloud Pool for pre-rendered assets matching script hash..."
 
                 val rawTopicForMatch = topicContext.value.ifEmpty { finalScript }
+                val cleanedRawTopic = UnifiedPromptRefinementLayer.cleanNewsTopic(rawTopicForMatch).ifBlank { rawTopicForMatch }
                 val normalizedTopicForMatch = try {
-                    repository.normalizeTopic(rawTopicForMatch)
+                    repository.normalizeTopic(cleanedRawTopic)
                 } catch (e: Exception) {
-                    rawTopicForMatch.trim().lowercase()
+                    cleanedRawTopic.trim().lowercase()
                 }
-                Log.i("MainViewModel", "Original Matching Topic: '$rawTopicForMatch' -> Normalized Matching Topic: '$normalizedTopicForMatch'")
+                Log.i("MainViewModel", "Original Matching Topic: '$rawTopicForMatch' -> Cleaned Topic: '$cleanedRawTopic' -> Normalized Matching Topic: '$normalizedTopicForMatch'")
 
                 // 2A. Check Firestore for pre-rendered assets matching the generated script hash BEFORE calling external APIs!
                 val scriptHash = com.ritvyom.yashoraReelgenerator.data.remote.FirebaseCloudManager.computeScriptHash(finalScript)
@@ -5693,11 +5851,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
 
                 if (sessionId != currentGenerationSessionId) return@launch
 
-                // Strictly pitch source-specific article media (RSS video clips & high-res images) directly into opening scenes
+                // Fallback: If any scene failed to resolve media dynamically and source media exists, apply as fallback
                 if (sourceSpecificMediaList.isNotEmpty()) {
-                    generationStatus.value = "Prioritizing and pitching ${sourceSpecificMediaList.size} original news media clips into reel scenes..."
                     scenes = scenes.mapIndexed { idx, scene ->
-                        if (idx < sourceSpecificMediaList.size) {
+                        if (scene.mediaPath.isNullOrBlank() && idx < sourceSpecificMediaList.size) {
                             val targetUrl = sourceSpecificMediaList[idx]
                             val isVideo = targetUrl.contains(".mp4", ignoreCase = true) ||
                                     targetUrl.contains("video", ignoreCase = true) ||
@@ -5717,7 +5874,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                                 mediaPath = if (!localPath.isNullOrEmpty()) localPath else targetUrl,
                                 remoteUrl = targetUrl,
                                 mediaType = if (isVideo) "VIDEO" else "IMAGE",
-                                mediaSourceUsed = "RSS Article Metadata",
+                                mediaSourceUsed = "RSS Article Metadata Fallback",
                                 mediaFetchStatus = "SUCCESS",
                                 mediaFetchError = null
                             )
@@ -5737,23 +5894,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                     selectedSceneIndex.value = 0
                 }
 
-                // Render pipeline steps with clear, descriptive status messages
-                val steps = listOf(
-                    Pair("Synthesizing voice audio with neural models...", 0.65f),
-                    Pair("Fetching visuals and aligning media frames...", 0.80f),
-                    Pair("Rendering captions and aligning subtitle timings...", 0.92f),
-                    Pair("Finalizing video project layout...", 1.0f)
-                )
-
-                for ((idx, step) in steps.withIndex()) {
-                    if (sessionId != currentGenerationSessionId) return@launch
-                    if (scenes.isNotEmpty() && (activeProject.value?.id == targetProjectId || targetProjectId == null)) {
-                        selectedSceneIndex.value = (idx % scenes.size)
+                // Step 3: Synthesizing real voice audio for all scenes
+                generationStatus.value = "Synthesizing voice audio with neural models..."
+                generationProgress.value = 0.65f
+                try {
+                    val voiceFiles = synthesizeVoiceForScenes(scenes, getApplication<Application>().cacheDir) { pr ->
+                        generationProgress.value = 0.65f + 0.15f * pr
                     }
-                    delay(200)
-                    generationStatus.value = step.first
-                    generationProgress.value = step.second
+                    scenes = scenes.mapIndexed { sIdx, sc ->
+                        val vf = voiceFiles.getOrNull(sIdx)
+                        if (vf != null && vf.exists() && vf.length() > 44) {
+                            sc.copy(customVoiceAudioPath = vf.absolutePath)
+                        } else sc
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainViewModel", "Error synthesizing voice in pipeline", e)
                 }
+
+                generationStatus.value = "Fetching visuals and aligning media frames..."
+                generationProgress.value = 0.82f
+                delay(200)
+
+                generationStatus.value = "Rendering captions and aligning subtitle timings..."
+                generationProgress.value = 0.94f
+                delay(200)
+
+                generationStatus.value = "Finalizing video project layout..."
+                generationProgress.value = 1.0f
+                delay(200)
 
                 if (sessionId != currentGenerationSessionId) return@launch
 
@@ -6693,7 +6861,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                 previewStatus.value = "Preparing cinematic slideshow layout..."
                 val finalResults = if (sourceSpecificMediaList.isNotEmpty()) {
                     results.mapIndexed { idx, sc ->
-                        if (idx < sourceSpecificMediaList.size) {
+                        if ((sc.selectedUrl.isNullOrBlank() || sc.selectedUrl.contains("picsum")) && idx < sourceSpecificMediaList.size) {
                             val targetUrl = sourceSpecificMediaList[idx]
                             sc.copy(
                                 selectedUrl = targetUrl,

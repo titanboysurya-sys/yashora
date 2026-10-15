@@ -26,7 +26,12 @@ object ScriptSemanticAnalysisEngine {
         "dramatic atmospheric storytelling view", "storytelling narration scene",
         "authentic scene", "candid moment", "beautiful view", "candid", "candid portrait",
         "candid photo", "candid snapshot", "real life candid", "real life candid people portrait",
-        "real life candid portrait", "candid people", "candid shot", "real life candid people"
+        "real life candid portrait", "candid people", "candid shot", "real life candid people",
+        // Banned generic single tags and hallucinated filler
+        "vibrant", "crime", "vibrant crime", "crime vibrant", "vibrant, crime", "crime, vibrant",
+        "vibrant scenic visual", "news studio television broadcast", "courtroom gavel",
+        "generic", "placeholder", "trending", "viral", "headline", "breaking news",
+        "news broadcast", "studio", "breaking", "update", "report", "news report", "clip", "broll", "b-roll", "stock"
     )
 
     data class SemanticAnalysisResult(
@@ -50,7 +55,7 @@ object ScriptSemanticAnalysisEngine {
         "बीमार" to "sick patient", "बीमारी" to "disease illness", "क्लीनिक" to "medical clinic", "स्टेथोस्कोप" to "stethoscope doctor",
         "एम्बुलेंस" to "ambulance emergency", "खून" to "blood test lab", "दवाखाना" to "pharmacy drugstore",
 
-        // 2. Police, Crime, Legal & Law
+        // 2. Police, Crime, Legal & Law (Only for actual crime/police stories)
         "पुलिस" to "police officer", "दारोगा" to "police inspector", "थाना" to "police station", "सिपाही" to "policeman patrol",
         "जेल" to "prison cell bars", "कैदी" to "prisoner inmate", "हथकड़ी" to "handcuffs arrest", "चोर" to "thief suspect",
         "चोरी" to "burglary crime", "डकैती" to "heist robbery", "अदालत" to "courtroom", "कोर्ट" to "courtroom judge",
@@ -159,16 +164,46 @@ object ScriptSemanticAnalysisEngine {
         "बॉर्डर" to "border patrol defense military", "मिसाइल" to "missile defense military rocket",
         "एयरफोर्स" to "fighter jet air force defense", "नेवी" to "navy warship naval ship ocean",
 
-        // 17. Politics & Government
+        // 17. Politics, Governance & Elections
         "सरकार" to "government parliament official building", "संसद" to "parliament house government democracy",
         "चुनाव" to "voting ballot election democracy", "वोट" to "voting booth democracy ballot",
-        "नेता" to "political leader podium address", "मंत्री" to "minister government press conference",
-        "फैसला" to "historic government decision announcement",
+        "मतदान" to "polling station election queue", "रैली" to "huge political crowd rally podium",
+        "भाषण" to "public leader speech podium microphones", "नेता" to "political leader podium address",
+        "मंत्री" to "minister government press conference", "मुख्यमंत्री" to "chief minister administration office",
+        "प्रधानमंत्री" to "prime minister official address", "फैसला" to "historic government decision announcement",
 
-        // 18. Disasters & Weather
-        "हादसा" to "accident emergency rescue disaster", "दुर्घटना" to "accident emergency ambulance rescue",
-        "भूकंप" to "earthquake disaster destruction rescue", "बाढ़" to "flood disaster rescue operations",
-        "तूफान" to "storm hurricane cyclone disaster", "आग" to "fire flames firefighters emergency rescue"
+        // 18. Accidents, Emergencies & Collisions
+        "हादसा" to "road accident crash", "दुर्घटना" to "traffic accident collision",
+        "सड़क हादसा" to "car crash road accident", "टक्कर" to "car collision accident",
+        "बस हादसा" to "bus crash accident highway", "ट्रेन हादसा" to "train railway accident",
+        "पलटी" to "overturned vehicle crash", "घायल" to "injured rescue emergency ambulance",
+        "मौत" to "tragic incident mourning", "अस्पताल भर्ती" to "hospital emergency admission patient",
+
+        // 19. Weather, Climate & Environmental Disasters
+        "मौसम" to "weather forecast sky", "बारिश" to "heavy rainfall storm",
+        "मानसून" to "monsoon rain storm clouds", "गर्मी" to "hot summer bright sun",
+        "सर्दी" to "cold winter fog mist", "कोहरा" to "dense winter fog road",
+        "बाढ़" to "flood waters rescue boat", "तूफान" to "cyclone storm high winds",
+        "भूकंप" to "earthquake disaster destruction rescue", "आग" to "fire flames firefighters emergency rescue",
+        "धमाका" to "smoke explosion emergency", "विस्फोट" to "blast explosion rescue",
+
+        // 20. Markets, Farming, Prices & Economy
+        "मंडी" to "wholesale vegetable grain market", "दाम" to "market price commodities",
+        "भाव" to "market rates prices", "महंगाई" to "market grocery prices shopping",
+        "सब्जी" to "fresh vegetables market stall", "प्याज" to "onions farm market",
+        "टमाटर" to "red tomatoes harvest crate", "गेहूं" to "golden wheat grain harvest",
+        "चावल" to "rice paddy harvest field", "सोना" to "gold bullion jewelry market",
+        "चांदी" to "silver bullion metal market", "शेयर बाजार" to "stock exchange trader screens",
+
+        // 21. Aviation, Railways & Transport
+        "विमान" to "commercial airplane flight airport", "हवाई जहाज" to "airplane flying sky runway",
+        "एयरपोर्ट" to "airport terminal airplane", "फ्लाइट" to "airplane boarding flight runway",
+        "मेट्रो" to "modern metro train city station", "रेल" to "railway train tracks journey",
+
+        // 22. Public Protests, Movements & Crowds
+        "प्रदर्शन" to "crowd protest demonstration rally", "हड़ताल" to "strike workers protest banners",
+        "धरना" to "peaceful protest sit in demonstration", "आंदोलन" to "public demonstration movement crowd",
+        "नारेबाजी" to "crowd shouting slogans rally"
     )
 
     fun analyze(segmentText: String, style: String = "", sceneIndex: Int = 0): SemanticAnalysisResult {
@@ -493,7 +528,7 @@ object ScriptSemanticAnalysisEngine {
                 pixabayQuery = specificPexelsQuery,
                 pixabayImageType = "photo",
                 wikimediaQuery = "Police officer",
-                aiPrompt = "Scene capturing \"${segmentText.take(120)}\" in $style style, realistic details, 4k"
+                aiPrompt = "Dramatic law enforcement investigation scene, $specificPexelsQuery, authentic details, 4k"
             )
         }
 
@@ -772,7 +807,7 @@ object ScriptSemanticAnalysisEngine {
             pixabayQuery = cleanKeywordQuery,
             pixabayImageType = if (styleLower.contains("illustration") || styleLower.contains("art") || styleLower.contains("cartoon")) "illustration" else "photo",
             wikimediaQuery = contentTokens.firstOrNull() ?: "",
-            aiPrompt = "Scene in $style style capturing: \"${segmentText.take(120)}\", detailed realistic composition, 4k"
+            aiPrompt = "Cinematic $style sequence depicting $cleanKeywordQuery, highly detailed authentic composition, 4k"
         )
     }
 
@@ -844,6 +879,14 @@ object ScriptSemanticAnalysisEngine {
         proposedQuery: String = "",
         style: String = ""
     ): String {
+        val cleanSeg = segmentText.trim()
+        val segLower = cleanSeg.lowercase()
+        val analysis = if (cleanSeg.isNotEmpty()) analyze(cleanSeg, style) else null
+        val derived = analysis?.pexelsQuery?.trim() ?: ""
+        val derivedWords = derived.split(Regex("\\s+"))
+            .filter { it.lowercase() !in BANNED_FLUFF_WORDS }
+        val derivedQuery = if (derivedWords.isNotEmpty()) derivedWords.take(4).joinToString(" ") else ""
+
         val cleanProposed = proposedQuery.trim()
             .replace(Regex("[\"\'!?,.;:\\[\\]()]"), " ")
             .replace(Regex("\\s+"), " ")
@@ -854,44 +897,99 @@ object ScriptSemanticAnalysisEngine {
             .map { it.trim().lowercase() }
             .filter { it.isNotEmpty() && it !in BANNED_FLUFF_WORDS && it.length >= 2 }
 
-        // If proposedQuery is valid and has at least 1 concrete word, and does not contain non-English characters
         val isCleanEnglish = cleanProposed.isNotEmpty() && cleanProposed.all { it.code <= 127 }
         if (isCleanEnglish && proposedWords.isNotEmpty()) {
             val candidate = proposedWords.take(4).joinToString(" ")
-            // Ensure candidate doesn't match banned phrases, generic filler, or candid tags
-            if (candidate !in BANNED_FLUFF_WORDS &&
-                !candidate.contains("atmospheric") &&
-                !candidate.contains("cinematic") &&
-                !candidate.contains("candid") &&
-                !candidate.contains("real life")
-            ) {
-                return candidate
+            val candLower = candidate.lowercase()
+
+            val isGenericTag = BANNED_FLUFF_WORDS.any { candLower == it || candLower.contains(it) } ||
+                    candLower in setOf("crime", "vibrant", "news", "report", "clip", "footage", "video", "photo", "image", "media", "story")
+
+            // Check if candidate is falsely attributing crime or police to an unrelated scene
+            val hasExplicitCrime = segLower.contains("police") || segLower.contains("पुलिस") ||
+                    segLower.contains("crime") || segLower.contains("arrest") || segLower.contains("गिरफ्तार") ||
+                    segLower.contains("थाना") || segLower.contains("चोरी") || segLower.contains("कत्ल") || segLower.contains("murder")
+            val isCrimeHallucination = (candLower.contains("crime") || candLower.contains("police") || candLower.contains("court")) && !hasExplicitCrime
+
+            if (!isGenericTag && !isCrimeHallucination) {
+                // If candidate has concrete words matching the segment or if derivedQuery is not available, accept candidate
+                if (derivedQuery.isEmpty() || proposedWords.any { segLower.contains(it) }) {
+                    return candidate
+                }
             }
         }
 
-        // FEEDBACK LOOP TRIGGER: Parse script segment directly to derive high-precision query
-        val analysis = analyze(segmentText, style)
-        val derived = analysis.pexelsQuery.trim()
-        val derivedWords = derived.split(Regex("\\s+"))
-            .filter { it.lowercase() !in BANNED_FLUFF_WORDS }
+        // Return derived query parsed directly from the exact spoken words
+        if (derivedQuery.isNotEmpty()) {
+            return derivedQuery
+        }
 
-        return if (derivedWords.isNotEmpty()) {
-            derivedWords.take(4).joinToString(" ")
+        val contentWords = extractContentTokens(segLower)
+        if (contentWords.isNotEmpty()) {
+            return contentWords.take(3).joinToString(" ")
+        }
+
+        val cleanWords = cleanSeg.replace(Regex("[^a-zA-Z0-9\\s]"), " ")
+            .split(Regex("\\s+"))
+            .map { it.trim().lowercase() }
+            .filter { it.length >= 2 && it !in BANNED_FLUFF_WORDS }
+        return if (cleanWords.isNotEmpty()) {
+            cleanWords.take(3).joinToString(" ")
         } else {
-            val contentWords = extractContentTokens(segmentText.lowercase())
-            if (contentWords.isNotEmpty()) {
-                contentWords.take(3).joinToString(" ")
-            } else {
-                val cleanWords = segmentText.replace(Regex("[^a-zA-Z0-9\\s]"), " ")
-                    .split(Regex("\\s+"))
-                    .map { it.trim().lowercase() }
-                    .filter { it.length >= 2 && it !in BANNED_FLUFF_WORDS }
-                if (cleanWords.isNotEmpty()) {
-                    cleanWords.take(3).joinToString(" ")
-                } else {
-                    "vibrant scenic visual"
+            "documentary news narrative visual"
+        }
+    }
+
+    /**
+     * Guarantees that any query returned for stock media (Pexels, Pixabay, Unsplash, Pollinations AI)
+     * is 100% in English (ASCII characters only), regardless of what language the user's script
+     * was written in (Hindi, Hinglish, Marathi, Bengali, Spanish, etc.).
+     */
+    fun ensureEnglishSearchQuery(query: String, segmentContext: String = "", style: String = ""): String {
+        val trimmed = query.trim()
+        val hasNonAscii = trimmed.any { it.code > 127 }
+        if (!hasNonAscii && trimmed.isNotEmpty()) {
+            val words = trimmed.split(Regex("\\s+")).filter { it.lowercase() !in BANNED_FLUFF_WORDS }
+            if (words.isNotEmpty()) {
+                val cand = words.take(4).joinToString(" ")
+                if (cand.all { it.code <= 127 } && cand.isNotBlank()) {
+                    return cand
                 }
             }
+        }
+
+        // Try extracting high-precision English query from segment or query
+        val candidate = refineHighPrecisionSearchQuery(
+            segmentText = if (segmentContext.isNotBlank()) segmentContext else trimmed,
+            proposedQuery = if (!hasNonAscii) trimmed else "",
+            style = style
+        )
+        if (candidate.isNotEmpty() && !candidate.any { it.code > 127 }) {
+            return candidate
+        }
+
+        // Check local translation tokens
+        val contentTokens = extractContentTokens((trimmed + " " + segmentContext).lowercase())
+        val englishOnlyTokens = contentTokens.filter { it.all { ch -> ch in 'a'..'z' || ch in '0'..'9' || ch == ' ' } && it !in BANNED_FLUFF_WORDS }
+        if (englishOnlyTokens.isNotEmpty()) {
+            return englishOnlyTokens.take(3).joinToString(" ")
+        }
+
+        // Contextual category fallback
+        val fullLower = (trimmed + " " + segmentContext).lowercase()
+        return when {
+            fullLower.contains("accident") || fullLower.contains("हादसा") || fullLower.contains("घायल") || fullLower.contains("bus") || fullLower.contains("बस") -> "passenger bus road incident"
+            fullLower.contains("police") || fullLower.contains("पुलिस") || fullLower.contains("arrest") || fullLower.contains("गिरफ्तार") -> "police officer patrol car"
+            fullLower.contains("court") || fullLower.contains("कोर्ट") || fullLower.contains("अदालत") || fullLower.contains("judge") -> "law courtroom gavel justice"
+            fullLower.contains("doctor") || fullLower.contains("डॉक्टर") || fullLower.contains("hospital") || fullLower.contains("अस्पताल") -> "doctor hospital medical clinic"
+            fullLower.contains("farmer") || fullLower.contains("किसान") || fullLower.contains("खेती") || fullLower.contains("crop") -> "farmer agriculture field harvest"
+            fullLower.contains("school") || fullLower.contains("स्कूल") || fullLower.contains("छात्र") || fullLower.contains("student") -> "school classroom students study"
+            fullLower.contains("modi") || fullLower.contains("मोदी") || fullLower.contains("minister") || fullLower.contains("नेता") -> "government official speech conference"
+            fullLower.contains("cricket") || fullLower.contains("क्रिकेट") || fullLower.contains("kohli") || fullLower.contains("मैच") -> "cricket stadium match action"
+            fullLower.contains("space") || fullLower.contains("इसरो") || fullLower.contains("रॉकेट") || fullLower.contains("rocket") -> "space rocket launch mission"
+            fullLower.contains("food") || fullLower.contains("खाना") || fullLower.contains("रेसिपी") || fullLower.contains("recipe") -> "delicious cooking food recipe"
+            fullLower.contains("car") || fullLower.contains("गाड़ी") || fullLower.contains("कार") || fullLower.contains("road") -> "modern highway driving road"
+            else -> "news documentary journalism story event"
         }
     }
 
@@ -932,5 +1030,242 @@ object ScriptSemanticAnalysisEngine {
      */
     fun refineKeywords(segmentText: String): List<String> {
         return analyze(segmentText).refinedKeywords
+    }
+
+    /**
+     * Generates a vivid, detailed, 100% English visual prompt strictly matching the
+     * voiceover narration, topic context, concrete narrative action, camera angle, and lighting.
+     *
+     * Completely eliminates broken single-word/generic prompts like "vibrant, crime" or "crime",
+     * never embeds raw Devanagari Hindi characters into the English prompt, and guarantees
+     * the prompt accurately reflects what the narrator is speaking about in that scene.
+     */
+    fun generateRichContextualVisualPrompt(
+        narrationText: String,
+        style: String = "Cinematic",
+        topicContext: String = "",
+        sceneNumber: Int = 1,
+        sceneTotal: Int = 1
+    ): String {
+        val cleanNarr = com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer
+            .cleanScriptText(narrationText).ifBlank {
+                com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer
+                    .cleanNewsTopic(topicContext)
+            }
+        val lower = cleanNarr.lowercase().trim()
+        val cleanTopic = com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer
+            .cleanNewsTopic(topicContext)
+        val styleClean = if (style.isNotBlank()) style.trim() else "Cinematic"
+
+        val cameraAngles = listOf(
+            "Cinematic dynamic low-angle tracking shot",
+            "High-detail close-up framing focusing on key subject expressions and micro-actions",
+            "Wide cinematic establishing perspective capturing the full environment",
+            "Intense eye-level framing capturing authentic dramatic focus",
+            "Smooth panning camera tracking moving alongside the central action",
+            "Crisp medium focal shot capturing characters and immediate surroundings"
+        )
+        val lightingStyles = listOf(
+            "volumetric dramatic natural sunlight with deep cinematic shadows",
+            "high-contrast chiaroscuro lighting with crisp depth of field and specular highlights",
+            "warm golden hour side-lighting with atmospheric glow and soft haze",
+            "crisp professional studio illumination with ultra-sharp contour clarity",
+            "moody dusk twilight lighting with sharp reflections and authentic color grading"
+        )
+
+        val chosenAngle = cameraAngles[(sceneNumber - 1).coerceAtLeast(0) % cameraAngles.size]
+        val chosenLighting = lightingStyles[(sceneNumber - 1).coerceAtLeast(0) % lightingStyles.size]
+
+        // 1. Run semantic token analysis to identify critical entities and domain
+        val analysis = analyze(cleanNarr, styleClean, sceneNumber)
+        val entity = analysis.criticalEntity
+
+        // 2. Build concrete subject & action narrative in pure English (never raw Hindi)
+        val concreteActionDescription: String = when {
+            // Famous public figures & leaders
+            entity == "Narendra Modi" || lower.contains("modi") || lower.contains("मोदी") ->
+                "Prime Minister Narendra Modi in formal Indian attire addressing an official gathering with the Indian national flag visible in the background"
+            entity == "Virat Kohli with Premanand Maharaj" ->
+                "Indian cricketer Virat Kohli folding hands with deep reverence before spiritual saint Premanand Ji Maharaj inside a peaceful Vrindavan ashram"
+            entity == "Premanand Ji Maharaj" || lower.contains("premanand") || lower.contains("प्रेमानंद") ->
+                "Revered saint Shri Hit Premanand Govind Sharan Ji Maharaj in traditional yellow robes delivering a serene spiritual discourse in Vrindavan"
+            entity == "Virat Kohli" || lower.contains("virat") || lower.contains("विराट") ->
+                "Indian cricketer Virat Kohli focused on the pitch in team jersey under bright stadium floodlights"
+            entity == "Radha Soami Satsang Beas" || lower.contains("राधा स्वामी") || lower.contains("radha soami") ->
+                "Peaceful congregation of white-clad devotees gathered at Radha Soami Satsang Beas Dera listening to the spiritual master's discourse"
+            lower.contains("dhoni") || lower.contains("धोनी") ->
+                "Cricket legend MS Dhoni in jersey walking on the pitch with calm determination"
+            lower.contains("yogi") || lower.contains("योगी") ->
+                "Chief Minister Yogi Adityanath seated at an official administration governance table reviewing documents"
+            lower.contains("gandhi") || lower.contains("गांधी") ->
+                "Historical reconstruction of Mahatma Gandhi leading a peaceful freedom march"
+            lower.contains("bhagat singh") || lower.contains("भगत सिंह") ->
+                "Historical portrait of Indian revolutionary freedom fighter Bhagat Singh in vintage archival setting"
+
+            // ISRO, Space & Astronomy
+            lower.contains("isro") || lower.contains("इसरो") || lower.contains("गगनयान") || lower.contains("gaganyaan") ||
+                    lower.contains("चंद्रयान") || lower.contains("chandrayaan") || lower.contains("अंतरिक्ष") || lower.contains("space") ||
+                    lower.contains("रॉकेट") || lower.contains("rocket") || lower.contains("satellite") || lower.contains("उपग्रह") -> {
+                when {
+                    lower.contains("गगनयान") || lower.contains("gaganyaan") || lower.contains("यात्री") || lower.contains("astronaut") ->
+                        "Indian astronaut in advanced white Gaganyaan spacesuit inside spacecraft cabin monitoring navigation control consoles"
+                    lower.contains("चंद्रयान") || lower.contains("chandrayaan") || lower.contains("moon") || lower.contains("चंद्रमा") ->
+                        "Chandrayaan lunar lander spacecraft safely deployed on the cratered lunar surface against deep starry cosmos"
+                    lower.contains("रॉकेट") || lower.contains("rocket") || lower.contains("लॉन्च") || lower.contains("launch") ->
+                        "ISRO heavy rocket launching into clear sky with billowing exhaust smoke and fiery orange thruster blast at Sriharikota"
+                    else ->
+                        "High-tech communications satellite orbiting planet Earth with solar panels deployed against the cosmic blackness"
+                }
+            }
+
+            // Police, Crime, CBI, Law, Courts & Investigation
+            lower.contains("पुलिस") || lower.contains("police") || lower.contains("दारोगा") || lower.contains("थाना") ||
+                    lower.contains("गिरफ्तार") || lower.contains("arrest") || lower.contains("हथकड़ी") || lower.contains("handcuffs") ||
+                    lower.contains("जेल") || lower.contains("jail") || lower.contains("prison") || lower.contains("सीबीआई") ||
+                    lower.contains("cbi") || lower.contains("court") || lower.contains("कोर्ट") || lower.contains("अदालत") ||
+                    lower.contains("न्यायाधीश") || lower.contains("judge") || lower.contains("वकील") || lower.contains("lawyer") ||
+                    lower.contains("चोरी") || lower.contains("डकैती") || lower.contains("कत्ल") || lower.contains("murder") ||
+                    lower.contains("सबूत") || lower.contains("evidence") || lower.contains("चार्जशीट") || lower.contains("closure report") -> {
+                when {
+                    lower.contains("गिरफ्तार") || lower.contains("arrest") || lower.contains("हथकड़ी") || lower.contains("handcuffs") || lower.contains("custody") ->
+                        "Police officers in uniform arresting the handcuffed suspect and leading them past flashing emergency patrol vehicle lights"
+                    lower.contains("जेल") || lower.contains("jail") || lower.contains("prison") || lower.contains("सलाखें") ->
+                        "Inmate standing inside high-security correctional prison cell behind heavy steel bars with dramatic shadow lighting"
+                    lower.contains("judge") || lower.contains("जज") || lower.contains("न्यायाधीश") || lower.contains("फैसला") || lower.contains("verdict") ->
+                        "Presiding judge striking the wooden gavel on the judicial bench delivering a verdict in the formal courtroom"
+                    lower.contains("court") || lower.contains("अदालत") || lower.contains("कोर्ट") || lower.contains("वकील") || lower.contains("lawyer") ->
+                        "Attorneys in black robes presenting legal case arguments and evidence documents before the Supreme Court bench"
+                    lower.contains("सीबीआई") || lower.contains("cbi") || lower.contains("चार्जशीट") || lower.contains("क्लोजर रिपोर्ट") || lower.contains("closure report") ->
+                        "Central Bureau of Investigation (CBI) detectives in formal suits carrying official confidential case document folders"
+                    lower.contains("हत्या") || lower.contains("murder") || lower.contains("कत्ल") || lower.contains("forensic") || lower.contains("सबूत") ->
+                        "Forensic investigators and detectives in protective gloves inspecting crime scene evidence markers behind yellow police barrier tape"
+                    else ->
+                        "Law enforcement police officers patrolling the urban street with flashing red and blue siren lights"
+                }
+            }
+
+            // News, TV Broadcast, Reporter
+            lower.contains("रिपोर्टर") || lower.contains("reporter") || lower.contains("प्रेस") || lower.contains("press") ||
+                    lower.contains("न्यूज") || lower.contains("anchor") || lower.contains("एंकर") || lower.contains("लाइव") -> {
+                when {
+                    lower.contains("प्रेस") || lower.contains("press conference") ->
+                        "Spokesperson addressing a packed press conference with banks of news microphones and flashing camera strobes"
+                    lower.contains("रिपोर्टर") || lower.contains("reporter") ->
+                        "Television news reporter holding a microphone broadcasting live from an active urban news location"
+                    else ->
+                        "Television news anchor seated at a modern high-tech broadcasting studio desk with live news graphics screens"
+                }
+            }
+
+            // Politics, Parliament, Government & Elections
+            lower.contains("संसद") || lower.contains("parliament") || lower.contains("विधानसभा") ||
+                    lower.contains("सरकार") || lower.contains("government") || lower.contains("चुनाव") ||
+                    lower.contains("election") || lower.contains("वोट") || lower.contains("voting") -> {
+                when {
+                    lower.contains("संसद") || lower.contains("parliament") ->
+                        "Elected leaders and parliamentarians actively engaged in debate inside the grand democratic parliament chamber"
+                    lower.contains("चुनाव") || lower.contains("election") || lower.contains("वोट") || lower.contains("voting") ->
+                        "Voters lining up at a democratic voting station to cast their ballots with indelible ink on finger"
+                    else ->
+                        "Government leaders holding an official policy summit in a grand neoclassical hall with state emblems"
+                }
+            }
+
+            // Defense, Military, Army & Border
+            lower.contains("सेना") || lower.contains("army") || lower.contains("सैनिक") || lower.contains("soldier") ||
+                    lower.contains("फौज") || lower.contains("जवान") || lower.contains("बॉर्डर") || lower.contains("border") ||
+                    lower.contains("मिसाइल") || lower.contains("missile") || lower.contains("एयरफोर्स") || lower.contains("air force") ||
+                    lower.contains("नेवी") || lower.contains("navy") -> {
+                when {
+                    lower.contains("एयरफोर्स") || lower.contains("air force") || lower.contains("fighter jet") ->
+                        "Supersonic military fighter jet roaring across the sky leaving twin contrails during air defense patrol"
+                    lower.contains("नेवी") || lower.contains("navy") || lower.contains("warship") ->
+                        "Naval guided-missile destroyer warship cutting through rough ocean waves during maritime fleet maneuvers"
+                    lower.contains("मिसाइल") || lower.contains("missile") ->
+                        "Advanced ballistic missile defense system positioned on mobile launcher platform in defense readiness"
+                    else ->
+                        "Disciplined military soldiers in camouflage tactical gear patrolling a mountainous international border outpost"
+                }
+            }
+
+            // Medical, Hospital & Healthcare
+            lower.contains("डॉक्टर") || lower.contains("doctor") || lower.contains("अस्पताल") || lower.contains("hospital") ||
+                    lower.contains("मरीज") || lower.contains("patient") || lower.contains("surgery") || lower.contains("ऑपरेशन") -> {
+                when {
+                    lower.contains("surgery") || lower.contains("ऑपरेशन") ->
+                        "Surgical team in scrubs and masks performing a precision operation under bright hospital surgical lamps"
+                    else ->
+                        "Compassionate doctor wearing white coat and stethoscope consulting with a patient in a modern hospital room"
+                }
+            }
+
+            // Farming & Agriculture
+            lower.contains("किसान") || lower.contains("farmer") || lower.contains("खेत") || lower.contains("field") ||
+                    lower.contains("फसल") || lower.contains("crop") || lower.contains("harvest") || lower.contains("ट्रैक्टर") -> {
+                when {
+                    lower.contains("ट्रैक्टर") || lower.contains("tractor") ->
+                        "Modern agricultural tractor tilling the fertile soil of vast open farmland under golden morning sun"
+                    else ->
+                        "Indian farmer standing proudly amidst lush golden wheat crops during sunset harvest season"
+                }
+            }
+
+            // Business, Finance & Stock Market
+            lower.contains("शेयर") || lower.contains("stock") || lower.contains("मार्केट") || lower.contains("market") ||
+                    lower.contains("कंपनी") || lower.contains("company") || lower.contains("पैसा") || lower.contains("money") ||
+                    lower.contains("बैंक") || lower.contains("bank") -> {
+                when {
+                    lower.contains("शेयर") || lower.contains("stock") || lower.contains("ट्रेडर") ->
+                        "Financial trader analyzing dynamic candlestick charts and stock tickers across multi-monitor trading station"
+                    else ->
+                        "Corporate business professionals in modern glass high-rise conference room discussing economic strategy"
+                }
+            }
+
+            // Accidents & Disasters
+            lower.contains("हादसा") || lower.contains("accident") || lower.contains("आग") || lower.contains("fire") ||
+                    lower.contains("बाढ़") || lower.contains("flood") || lower.contains("भूकंप") || lower.contains("earthquake") -> {
+                when {
+                    lower.contains("आग") || lower.contains("fire") ->
+                        "Emergency firefighters with high-pressure hoses extinguishing a blazing building fire amidst smoke"
+                    lower.contains("बाढ़") || lower.contains("flood") ->
+                        "Disaster relief rescue boats navigating flooded streets helping stranded residents to safety"
+                    else ->
+                        "First responders and ambulance paramedics executing urgent emergency rescue operations"
+                }
+            }
+
+            // Food & Recipe
+            lower.contains("खाना") || lower.contains("food") || lower.contains("रेसिपी") || lower.contains("recipe") ||
+                    lower.contains("रसोई") || lower.contains("kitchen") || lower.contains("मसाला") || lower.contains("dish") -> {
+                "Professional chef in clean uniform garnishing an appetizing gourmet culinary dish in a gleaming restaurant kitchen"
+            }
+
+            // Kids & Fables
+            lower.contains("कहानी") || lower.contains("kahani") || lower.contains("fable") || lower.contains("fairytale") -> {
+                "Charming 3D Pixar animated characters exploring an enchanted vibrant storybook world filled with whimsical flora"
+            }
+
+            // Fallback derived directly from mapped semantic tokens
+            else -> {
+                val derivedTokens = extractContentTokens(lower)
+                val topicTokens = extractContentTokens(cleanTopic.lowercase())
+                val combinedTokens = (derivedTokens + topicTokens).distinct().take(4)
+                if (combinedTokens.isNotEmpty()) {
+                    val joinedSubject = combinedTokens.joinToString(" ")
+                    "Authentic narrative visual depicting $joinedSubject, capturing the unfolding real-world events"
+                } else {
+                    "Realistic narrative scene depicting the key story development"
+                }
+            }
+        }
+
+        val topicSentence = if (cleanTopic.isNotBlank() && !concreteActionDescription.contains(cleanTopic, ignoreCase = true)) {
+            " Directly representing: \"$cleanTopic\"."
+        } else ""
+
+        return "A cinematic $styleClean sequence: $concreteActionDescription.$topicSentence " +
+                "$chosenAngle. " +
+                "Rendered with $chosenLighting, highly detailed authentic textures, and realistic 4K depth of field."
     }
 }

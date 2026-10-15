@@ -845,7 +845,7 @@ fun NewsToReelScreen(
     selectedNewsForReel?.let { news ->
         var selectedTone by remember { mutableStateOf("Breaking News") }
         var selectedLanguage by remember {
-            mutableStateOf(if (news.language.equals("Hindi", ignoreCase = true)) "Hindi" else "Hindi & English")
+            mutableStateOf(if (news.language.contains("Hindi", ignoreCase = true) || news.language.isBlank()) "Hindi" else "English")
         }
         var selectedDuration by remember { mutableStateOf("Short") } // Short (15-30s), Medium (60s)
         var generatedScriptText by remember {
@@ -885,6 +885,8 @@ fun NewsToReelScreen(
                 articleVideos = articleVideos,
                 appLanguage = appLanguageState,
                 onSelectAndOpenInEditor = { variation ->
+                    val chosenLang = if (news.language.contains("Hindi", ignoreCase = true) || selectedLanguage.contains("Hindi", ignoreCase = true) || news.title.any { it in '\u0900'..'\u097F' }) "Hindi" else "English"
+                    mainViewModel.selectedLanguage.value = chosenLang
                     mainViewModel.createProjectFromDraftVariation(
                         title = news.title,
                         scriptText = variation.fullScript,
@@ -896,8 +898,8 @@ fun NewsToReelScreen(
                 },
                 onSelectAndSendToPipeline = { variation ->
                     mainViewModel.setNewsArticleMedia(articleImages, news.title, articleVideos)
-                    mainViewModel.scriptText.value = variation.fullScript
-                    mainViewModel.topicContext.value = news.title
+                    mainViewModel.scriptText.value = com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer.cleanScriptText(variation.fullScript)
+                    mainViewModel.topicContext.value = com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer.cleanNewsTopic(news.title)
                     mainViewModel.selectedLanguage.value = if (news.language == "Hindi" || selectedLanguage.contains("Hindi") || news.title.any { it in '\u0900'..'\u097F' }) "Hindi" else "English"
                     selectedNewsForReel = null
                     onNavigateToScriptConfig()
@@ -1237,8 +1239,9 @@ fun NewsToReelScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf("Hindi & English", "Pure Hindi", "English").forEach { lang ->
-                            val isSel = selectedLanguage == lang
+                        listOf("Hindi", "English").forEach { lang ->
+                            val isSel = selectedLanguage.equals(lang, ignoreCase = true)
+                            val displayLabel = if (lang == "Hindi") "🇮🇳 शुद्ध हिंदी (Hindi)" else "🌐 English"
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = if (isSel) Color(0xFF8A2BE2) else Color(0xFF22143D),
@@ -1248,7 +1251,7 @@ fun NewsToReelScreen(
                                     .clickable { selectedLanguage = lang }
                             ) {
                                 Text(
-                                    text = lang,
+                                    text = displayLabel,
                                     color = Color.White,
                                     fontSize = 10.sp,
                                     fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
@@ -1276,8 +1279,9 @@ fun NewsToReelScreen(
                         enabled = !isGeneratingScript,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(42.dp),
-                        shape = RoundedCornerShape(12.dp),
+                            .height(50.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF8A2BE2)
                         )
@@ -1388,8 +1392,8 @@ fun NewsToReelScreen(
                         Button(
                             onClick = {
                                 mainViewModel.setNewsArticleMedia(articleImages, news.title, articleVideos)
-                                mainViewModel.scriptText.value = generatedScriptText
-                                mainViewModel.topicContext.value = news.title
+                                mainViewModel.scriptText.value = com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer.cleanScriptText(generatedScriptText)
+                                mainViewModel.topicContext.value = com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer.cleanNewsTopic(news.title)
                                 mainViewModel.selectedLanguage.value = if (news.language == "Hindi" || selectedLanguage.contains("Hindi")) "Hindi" else "English"
                                 selectedNewsForReel = null
                                 onNavigateToScriptConfig()
