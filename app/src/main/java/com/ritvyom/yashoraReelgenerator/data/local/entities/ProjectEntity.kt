@@ -24,5 +24,6 @@ data class ProjectEntity(
     val subtitleStyle: String = "TikTok Style",
     val scenesJson: String = "",
     val topicContext: String = "",
-    val publishingStyle: String = "TikTok / Instagram Reels"
+    val publishingStyle: String = "TikTok / Instagram Reels",
+    val creativityLevel: Float = 0.5f
 )

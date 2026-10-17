@@ -183,11 +183,13 @@ class GeminiService {
         customGeminiKey: String = "",
         customUnsplashKey: String = "",
         topicContext: String = "",
-        publishingStyle: String = "TikTok / Instagram Reels"
+        publishingStyle: String = "TikTok / Instagram Reels",
+        visualDirectivesChunk: String = "",
+        creativityLevel: Float = 0.5f
     ): List<Scene> = withContext(Dispatchers.IO) {
         val apiKey = getCleanApiKey(customGeminiKey)
 
-        Log.d("GeminiService", "Starting analyzeScript. REST API Key is: ${if (apiKey.isEmpty()) "Empty" else "Present"}")
+        Log.d("GeminiService", "Starting analyzeScript. REST API Key is: ${if (apiKey.isEmpty()) "Empty" else "Present"}, CreativityLevel: $creativityLevel")
 
         val publishingStyleGuidelines = when (publishingStyle) {
             "TikTok / Instagram Reels" -> """
@@ -235,8 +237,33 @@ class GeminiService {
             PLATFORM SPECIFIC CONFIGURATION GUIDELINE FOR $publishingStyle:
             $publishingStyleGuidelines
             
+            CREATIVITY & CONTEXTUAL ADHERENCE LEVEL: ${String.format(java.util.Locale.US, "%.1f", creativityLevel)} (Range 0.0 Strict to 1.0 Creative)
+            ${
+                when {
+                    creativityLevel < 0.35f -> """
+                    MODE: STRICT CONTEXTUAL ADHERENCE (STRICT LITERAL MODE)
+                    - You MUST strictly and literally depict the exact physical subject, objects, and concrete actions described directly in each sentence.
+                    - ZERO abstract metaphors, ZERO artistic diversion, ZERO generic symbolism.
+                    - Generate authentic, content-specific visual prompts that directly depict the distinct narrative action, setting, and subjects of each sentence, without inserting generic boilerplate or repetitive stock filler tags.
+                    """.trimIndent()
+                    creativityLevel in 0.35f..0.65f -> """
+                    MODE: BALANCED CONTEXTUAL VISUALS (BALANCED MODE)
+                    - Naturally develop the visual story matching the narrative moment of each sentence.
+                    - Ground the visuals cleanly in the core subject and domain, using dynamic cinematic camera angles and realistic narrative development.
+                    - Generate authentic, content-specific visual prompts that directly depict the distinct narrative action, setting, and subjects of each sentence, without inserting generic boilerplate or repetitive stock filler tags.
+                    """.trimIndent()
+                    else -> """
+                    MODE: ABSTRACT CREATIVE INTERPRETATION (CREATIVE ARTISTIC MODE)
+                    - Employ rich cinematic metaphors, artistic atmosphere, dynamic visual symbolism, and poetic storytelling imagery while honoring the narrative mood.
+                    - Generate authentic, content-specific visual prompts that directly depict the distinct narrative action, setting, and subjects of each sentence, without inserting generic boilerplate or repetitive stock filler tags.
+                    """.trimIndent()
+                }
+            }
+
             OVERALL VIDEO TOPIC / CONTEXT CATEGORY:
             ${if (cleanTopic.trim().isEmpty()) "None provided (infer from script text directly)" else cleanTopic}
+            
+            ${if (visualDirectivesChunk.isNotBlank()) "PRE-PLANNED SCENE DIRECTIVES AND VISUAL TARGETS (FOLLOW THESE SPECIFIC MAPPINGS TO PREVENT REPETITION):\n$visualDirectivesChunk\n" else ""}
             
             Script:
             $script
@@ -288,12 +315,14 @@ class GeminiService {
               * Space / Science: "rocket launch space center", "astronaut spacesuit cabin", "satellite orbiting earth"
               * Wildlife / Nature: "wild eagle soaring mountain", "majestic lion grassland", "flowing river forest waterfall"
               * History / Culture: "ancient stone temple architecture", "historic monument ruins", "traditional festival celebration"
-              * Technology / Digital: "software developer typing laptop screen", "futuristic artificial intelligence chip"
+              * Technology / Digital: "cyber security server racks glowing", "futuristic artificial intelligence processor"
               * Health / Lifestyle: "doctor examining patient clinic", "athlete running sunrise track"
-              * Business / Work: "corporate boardroom meeting discussion", "busy city financial district"
+              * Business / Work: "executive presenting financial analytics", "busy modern city center"
               * Food / Agriculture: "farmer harvesting golden wheat field", "chef cooking sizzling pan kitchen"
             - STRICTLY FORBIDDEN from outputting generic tags like "police officer", "courtroom gavel", or "breaking news broadcast" unless the voiceover literally and explicitly describes police, a courtroom trial, or a television studio!
             - FORBIDDEN: Strictly forbidden from using generic mood, aesthetic, or placeholder terms like "atmospheric", "cinematic", "cinematic narrative scene", "cinematic visual", "atmospheric view", "moody lighting", "ambient", "cinematic tag", "candid", "real life candid", "candid portrait", or "narrative scene". NEVER output abstract feeling words; output concrete physical nouns and verbs!
+            - STRICTLY FORBIDDEN from outputting the word "documentary" in "visualPrompt", "imageSearchQuery", or "keywords"! Describe the authentic real-world subjects and actions directly.
+            - ABSOLUTE ZERO REPETITION MANDATE: Every single scene's "imageSearchQuery" must be COMPLETELY DIFFERENT from any other scene. Under NO circumstances should you repeat the headline topic or the first scene's search query on subsequent scenes! Each scene must have its own distinct, unique physical action and setting keywords.
             
             CRITICAL LANGUAGE & VOICE SYNTHESIS REQUIREMENT:
             - If the Target Language is "$language" and the input Script is NOT written in that language, you MUST translate the "narrationText" and "subtitle" fields into $language (using the native alphabet/script of $language, e.g., Devanagari script for Hindi, Cyrillic for Russian, etc.).
@@ -314,7 +343,7 @@ class GeminiService {
             - "narrationText": ONLY clean voiceover words in $language. Zero scene brackets, camera instructions, or visual descriptions.
             - "lighting": Explicit lighting mood (e.g., "warm golden hour cinematic sidelight", "high-key vibrant studio lighting", "dramatic rim lighting high contrast").
             - "composition": Explicit camera angle and framing (e.g., "extreme close-up macro focal shot", "wide cinematic establishing shot", "dynamic low-angle tracking shot").
-            - "action": Concrete physical action taking place (e.g., "chopping fresh onions on board", "rocket launching into starry sky", "hands typing lines of code on glowing laptop").
+            - "action": Concrete physical action taking place (e.g., "chopping fresh vegetables on cutting board", "rocket launching into starry sky", "mechanical clock gears turning smoothly").
             - "imageSearchQuery": 2 to 4 concrete English nouns & verbs representing physical subject/action for stock databases (NO generic filler words like "cinematic", "atmospheric", "candid", "scene").
             
             OUTPUT FORMAT & SCHEMA REQUIREMENTS:
@@ -412,7 +441,7 @@ class GeminiService {
                         put("generationConfig", JSONObject().apply {
                             put("responseMimeType", "application/json")
                             put("responseSchema", responseFormatJson)
-                            put("temperature", 0.4)
+                            put("temperature", (0.2 + (creativityLevel * 0.6)).coerceIn(0.2, 0.9))
                             put("maxOutputTokens", 8192)
                         })
                     }
@@ -579,113 +608,141 @@ class GeminiService {
                 }
 
                 val totalScenesToProcess = scenesJson.length().coerceAtMost(100)
-                val list = coroutineScope {
-                    val deferredList = (0 until totalScenesToProcess).map { i ->
-                        async(Dispatchers.IO) {
-                            val obj = scenesJson.optJSONObject(i) ?: return@async null
-                            val rawVisPrompt = obj.optString("visualPrompt", "")
-                            val rawImgSearchQuery = obj.optString("imageSearchQuery", "")
-                            val narrText = obj.optString("narrationText", "")
-                            val subText = obj.optString("subtitle", "")
-                            val scriptSegment: String = if (narrText.isNotBlank()) narrText else subText
+                val usedQueriesSoFar = mutableSetOf<String>()
+                val usedUrlsSoFar = mutableSetOf<String>()
+                val list = mutableListOf<Scene>()
 
-                            val isBrokenPrompt = rawVisPrompt.isBlank() ||
-                                rawVisPrompt.length < 25 ||
-                                rawVisPrompt.any { ch -> ch in '\u0900'..'\u097F' } ||
-                                rawVisPrompt.equals(scriptSegment, ignoreCase = true) ||
-                                rawVisPrompt.lowercase().contains("vibrant, crime") ||
-                                rawVisPrompt.lowercase().contains("crime, vibrant") ||
-                                rawVisPrompt.lowercase().trim() in setOf("crime", "vibrant", "police officer", "courtroom gavel", "vibrant scenic visual", "cinematic narrative scene", "news studio television broadcast") ||
-                                rawVisPrompt.split("\\s+".toRegex()).size <= 3
+                for (i in 0 until totalScenesToProcess) {
+                    val obj = scenesJson.optJSONObject(i) ?: continue
+                    val rawVisPrompt = obj.optString("visualPrompt", "")
+                    val rawImgSearchQuery = obj.optString("imageSearchQuery", "")
+                    val narrText = obj.optString("narrationText", "")
+                    val subText = obj.optString("subtitle", "")
+                    val scriptSegment: String = if (narrText.isNotBlank()) narrText else subText
+                    val currentSceneNumber = i + 1
 
-                            val visPrompt = if (isBrokenPrompt) {
-                                ScriptSemanticAnalysisEngine.generateRichContextualVisualPrompt(
-                                    narrationText = scriptSegment,
+                    val isBrokenPrompt = rawVisPrompt.isBlank() ||
+                        rawVisPrompt.length < 25 ||
+                        rawVisPrompt.any { ch -> ch in '\u0900'..'\u097F' } ||
+                        rawVisPrompt.equals(scriptSegment, ignoreCase = true) ||
+                        rawVisPrompt.lowercase().contains("vibrant, crime") ||
+                        rawVisPrompt.lowercase().contains("crime, vibrant") ||
+                        rawVisPrompt.lowercase().contains("documentary") ||
+                        (i > 0 && list.firstOrNull()?.visualPrompt?.equals(rawVisPrompt, ignoreCase = true) == true) ||
+                        rawVisPrompt.lowercase().trim() in setOf("crime", "vibrant", "police officer", "courtroom gavel", "vibrant scenic visual", "cinematic narrative scene", "news studio television broadcast", "documentary") ||
+                        rawVisPrompt.split("\\s+".toRegex()).size <= 3
+
+                    val visPrompt = if (isBrokenPrompt) {
+                        ScriptSemanticAnalysisEngine.generateRichContextualVisualPrompt(
+                            narrationText = scriptSegment,
+                            style = style,
+                            topicContext = topicContext,
+                            sceneNumber = currentSceneNumber,
+                            sceneTotal = totalScenesToProcess
+                        )
+                    } else {
+                        rawVisPrompt.replace(Regex("(?i)\\bdocumentary\\b"), "editorial").replace(Regex("\\s+"), " ").trim()
+                    }
+                    
+                    // HIGH PRECISION FEEDBACK LOOP: Parse script segment tokens and validate query against real stock tags
+                    val initialProposedQuery = if (rawImgSearchQuery.contains("documentary", ignoreCase = true)) "" else rawImgSearchQuery
+                    val imgSearchQuery = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
+                        segmentText = if (scriptSegment.isNotBlank()) scriptSegment else visPrompt,
+                        proposedQuery = initialProposedQuery,
+                        style = style,
+                        sceneNumber = currentSceneNumber,
+                        alreadyUsedQueries = usedQueriesSoFar,
+                        topicContext = topicContext
+                    )
+                    if (imgSearchQuery.isNotBlank()) {
+                        usedQueriesSoFar.add(imgSearchQuery.lowercase().trim())
+                    }
+                    
+                    val kwsJson = obj.optJSONArray("keywords")
+                    val kwsList = mutableListOf<String>()
+                    
+                    // Always prepend and prioritize the feedback-loop verified stock keyword at the front of the list
+                    if (imgSearchQuery.isNotEmpty()) {
+                        kwsList.add(imgSearchQuery)
+                    }
+                    
+                    if (kwsJson != null) {
+                        for (idx in 0 until kwsJson.length()) {
+                            val rawKw = kwsJson.optString(idx)
+                            val cleanKw = rawKw.replace(Regex("(?i)\\bdocumentary\\b"), "").trim()
+                            if (cleanKw.isNotBlank()) {
+                                val kw = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
+                                    segmentText = if (scriptSegment.isNotBlank()) scriptSegment else visPrompt,
+                                    proposedQuery = cleanKw,
                                     style = style,
-                                    topicContext = topicContext,
-                                    sceneNumber = i + 1,
-                                    sceneTotal = totalScenesToProcess
+                                    sceneNumber = currentSceneNumber,
+                                    alreadyUsedQueries = usedQueriesSoFar,
+                                    topicContext = topicContext
                                 )
-                            } else {
-                                rawVisPrompt
-                            }
-                            
-                            // HIGH PRECISION FEEDBACK LOOP: Parse script segment tokens and validate query against real stock tags
-                            val imgSearchQuery = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
-                                segmentText = if (scriptSegment.isNotBlank()) scriptSegment else visPrompt,
-                                proposedQuery = rawImgSearchQuery,
-                                style = style
-                            )
-                            
-                            val kwsJson = obj.optJSONArray("keywords")
-                            val kwsList = mutableListOf<String>()
-                            
-                            // Always prepend and prioritize the feedback-loop verified stock keyword at the front of the list
-                            if (imgSearchQuery.isNotEmpty()) {
-                                kwsList.add(imgSearchQuery)
-                            }
-                            
-                            if (kwsJson != null) {
-                                for (idx in 0 until kwsJson.length()) {
-                                    val rawKw = kwsJson.optString(idx)
-                                    val kw = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
-                                        segmentText = if (scriptSegment.isNotBlank()) scriptSegment else visPrompt,
-                                        proposedQuery = rawKw,
-                                        style = style
-                                    )
-                                    if (kw.isNotEmpty() && kw != imgSearchQuery && !kwsList.contains(kw)) {
-                                        kwsList.add(kw)
-                                    }
+                                if (kw.isNotEmpty() && kw != imgSearchQuery && !kwsList.contains(kw) && !usedQueriesSoFar.contains(kw.lowercase().trim())) {
+                                    kwsList.add(kw)
+                                    usedQueriesSoFar.add(kw.lowercase().trim())
                                 }
                             }
-                            
-                            if (kwsList.isEmpty()) {
-                                val stopwords = setOf(
-                                    "a", "an", "the", "and", "or", "but", "is", "are", "was", "were", "of", "to", "in", "on", "at", "by", "for", "with", "about",
-                                    "this", "that", "it", "its", "you", "your", "my", "me", "we", "our", "us", "they", "them", "some", "any", "no", "not", "so",
-                                    "can", "will", "show", "get", "make", "be", "have", "has", "had", "do", "does", "did", "from", "very", "scene", "style", "description",
-                                    "captivating", "artistic", "representation", "masterpiece", "detail", "professional", "composition", "background", "photo", "image", "video"
-                                )
-                                val words = visPrompt.lowercase()
-                                    .replace(Regex("[^\\p{L}\\s]"), "")
-                                    .split(Regex("\\s+"))
-                                    .filter { it.length >= 2 && !stopwords.contains(it) }
-                                    .distinct()
-                                    .take(3)
-                                if (words.isNotEmpty()) kwsList.add(words.joinToString(" "))
-                            }
-                            
-                            val mediaUrl = getBestMatchingImage(
-                                visPrompt, style, i, imgSearchQuery, aspectRatio, imageSource, customUnsplashKey,
-                                narrationText = narrText, subtitle = subText
-                            )
-                            
-                            val lightingVal = obj.optString("lighting", "")
-                            val compVal = obj.optString("composition", "")
-                            val actionVal = obj.optString("action", "")
-
-                            val sc = Scene(
-                                sceneNumber = obj.optInt("sceneNumber", i + 1),
-                                narrationText = narrText,
-                                visualPrompt = visPrompt,
-                                durationSeconds = obj.optInt("durationSeconds", 5),
-                                subtitle = subText,
-                                mediaPath = mediaUrl,
-                                remoteUrl = mediaUrl
-                            )
-                            sc.keywords = kwsList
-                            sc.visualMetadata = com.ritvyom.yashoraReelgenerator.domain.models.SceneVisualMetadata(
-                                visualKeywords = kwsList,
-                                lighting = lightingVal,
-                                composition = compVal,
-                                action = actionVal,
-                                subject = imgSearchQuery,
-                                visualPrompt = visPrompt
-                            )
-                            sc
                         }
                     }
-                    deferredList.mapNotNull { it.await() }
+                    
+                    if (kwsList.isEmpty()) {
+                        val stopwords = setOf(
+                            "a", "an", "the", "and", "or", "but", "is", "are", "was", "were", "of", "to", "in", "on", "at", "by", "for", "with", "about",
+                            "this", "that", "it", "its", "you", "your", "my", "me", "we", "our", "us", "they", "them", "some", "any", "no", "not", "so",
+                            "can", "will", "show", "get", "make", "be", "have", "has", "had", "do", "does", "did", "from", "very", "scene", "style", "description",
+                            "captivating", "artistic", "representation", "masterpiece", "detail", "professional", "composition", "background", "photo", "image", "video", "documentary"
+                        )
+                        val words = visPrompt.lowercase()
+                            .replace(Regex("(?i)\\bdocumentary\\b"), "")
+                            .replace(Regex("[^\\p{L}\\s]"), "")
+                            .split(Regex("\\s+"))
+                            .filter { it.length >= 2 && !stopwords.contains(it) }
+                            .distinct()
+                            .take(3)
+                        if (words.isNotEmpty()) kwsList.add(words.joinToString(" "))
+                    }
+                    
+                    val mediaUrl = getBestMatchingImage(
+                        visualPrompt = visPrompt,
+                        style = style,
+                        sceneNum = i,
+                        customSearchQuery = imgSearchQuery,
+                        aspectRatio = aspectRatio,
+                        imageSource = imageSource,
+                        customUnsplashKey = customUnsplashKey,
+                        narrationText = narrText,
+                        subtitle = subText,
+                        alreadyUsedUrls = usedUrlsSoFar
+                    )
+                    if (mediaUrl.isNotBlank()) {
+                        usedUrlsSoFar.add(mediaUrl)
+                    }
+                    
+                    val lightingVal = obj.optString("lighting", "")
+                    val compVal = obj.optString("composition", "")
+                    val actionVal = obj.optString("action", "")
+
+                    val sc = Scene(
+                        sceneNumber = obj.optInt("sceneNumber", currentSceneNumber),
+                        narrationText = narrText,
+                        visualPrompt = visPrompt,
+                        durationSeconds = obj.optInt("durationSeconds", 5),
+                        subtitle = subText,
+                        mediaPath = mediaUrl,
+                        remoteUrl = mediaUrl
+                    )
+                    sc.keywords = kwsList
+                    sc.visualMetadata = com.ritvyom.yashoraReelgenerator.domain.models.SceneVisualMetadata(
+                        visualKeywords = kwsList,
+                        lighting = lightingVal,
+                        composition = compVal,
+                        action = actionVal,
+                        subject = imgSearchQuery,
+                        visualPrompt = visPrompt
+                    )
+                    list.add(sc)
                 }
                 if (list.isNotEmpty()) {
                     val scriptWords = script.split(Regex("\\s+")).filter { it.isNotBlank() }
@@ -695,9 +752,9 @@ class GeminiService {
                     }
                     Log.d("GeminiService", "Script total words: ${scriptWords.size}, Parsed scenes total words: $parsedWordsCount across ${list.size} scenes. Preserving AI generated storyboards.")
                     
-                    // If the script has significant length (>= 25 words) but AI only produced 1 or 2 scenes,
-                    // fall back to sentence-by-sentence local parser so every sentence gets its own exact scene and prompt.
-                    if (scriptWords.size >= 25 && list.size <= 2) {
+                    // If the script has significant length but AI produced only 1, 2, or 3 scenes,
+                    // fall back to sentence-by-sentence local parser so every sentence gets its own exact scene, prompt, and query.
+                    if ((scriptWords.size >= 25 && list.size <= 2) || (scriptWords.size >= 40 && list.size <= 3)) {
                         Log.w("GeminiService", "AI returned only ${list.size} scenes for a ${scriptWords.size}-word script. Falling back to sentence-by-sentence local parser for full coverage.")
                         return@withContext fallbackLocalParser(script, style, language, aspectRatio, imageSource)
                     }
@@ -987,7 +1044,7 @@ class GeminiService {
             "pixar style" -> "concept character 3d rendering Pixar style, warm cinematic storytelling light, heart-warming whimsical aesthetic, highly detailed"
             "cyberpunk" -> "dark high-tech cyberpunk street scene, glowing neon lights, rain-slicked wet asphalt reflections, futuristic urban cityscape, holographic signs"
             "sci-fi" -> "epic hard sci-fi universe style, sleek futuristic spaceships, glowing hologram technologies, star nebula backdrop, galactic scale"
-            "documentary" -> "raw authentic historical documentary photo, journalistic archival grain, natural lighting, photojournalism press photography, archival photo realism"
+            "documentary" -> "raw authentic historical editorial photo, journalistic archival grain, natural lighting, photojournalism press photography, archival photo realism"
             "storytelling" -> "whimsical bedtime storybook illustration style, warm cozy paint textures, soft glow elements, endearing whimsical fairy tale aesthetic"
             "minimalist" -> "clean sleek minimalist line and shape graphic style, highly simplified design, elegant negative space, aesthetic modern flat layout"
             "vintage" -> "nostalgic vintage 1970s film style, warm orange golden retro hues, classic scratchy 8mm camera light leaks, nostalgic dreamlike photograph"
@@ -1055,7 +1112,7 @@ class GeminiService {
         // 1. Food, Recipe, Cooking, Ingredients, Dishes, Kitchen (HIGH PRIORITY)
         if (lower.contains("रेसिपी") || containsWord(lower, "recipe") || lower.contains("kaise banaye") || lower.contains("banane ki") || lower.contains("banate") || lower.contains("rasoi")) matches.add("delicious recipe cooking")
         if (lower.contains("मसाले") || lower.contains("मसाला") || containsWord(lower, "spice") || lower.contains("seasoning") || containsWord(lower, "masala")) matches.add("spices cooking pan")
-        if (lower.contains("कढ़ाई") || lower.contains("पैन") || containsWord(lower, "pan") || containsWord(lower, "pot") || lower.contains("skillet") || lower.contains("kadhai") || lower.contains("bartan")) matches.add("cooking pan food")
+        if (lower.contains("कढ़ाई") || lower.contains("पैन") || containsWord(lower, "pan") || containsWord(lower, "pot") || lower.contains("skillet") || lower.contains("kadhai")) matches.add("cooking pan food")
         if (lower.contains("तेल") || lower.contains("घी") || lower.contains("मक्खन") || containsWord(lower, "oil") || containsWord(lower, "butter") || containsWord(lower, "ghee") || containsWord(lower, "tel")) matches.add("cooking oil sizzling pan")
         if (lower.contains("प्याज") || lower.contains("लहसुन") || lower.contains("अदरक") || lower.contains("टमाटर") || containsWord(lower, "onion") || containsWord(lower, "garlic") || containsWord(lower, "ginger") || containsWord(lower, "tomato") || containsWord(lower, "pyaz") || containsWord(lower, "tamatar") || containsWord(lower, "lahsun") || containsWord(lower, "adrak")) matches.add("chopping fresh vegetables kitchen")
         if (lower.contains("काटना") || lower.contains("काटें") || containsWord(lower, "chop") || containsWord(lower, "slice") || lower.contains("dicing") || containsWord(lower, "kaat")) matches.add("chopping vegetables cutting board")
@@ -1168,12 +1225,12 @@ class GeminiService {
         // 14. People, Family, Friends & Advice/Suggestions
         if (lower.contains("परिवार") || containsWord(lower, "family") || containsWord(lower, "parivar")) matches.add("happy loving family together")
         if (lower.contains("माँ") || lower.contains("माता") || containsWord(lower, "mother") || containsWord(lower, "mom") || containsWord(lower, "maa") || containsWord(lower, "mata")) matches.add("mother caring loving child")
-        if (lower.contains("पिता") || lower.contains("बापू") || containsWord(lower, "father") || containsWord(lower, "dad") || containsWord(lower, "pita") || containsWord(lower, "papa") || containsWord(lower, "baap")) matches.add("father walking guide child")
+        if (lower.contains("पिता") || lower.contains("बापू") || containsWord(lower, "father") || containsWord(lower, "dad") || containsWord(lower, "pita") || containsWord(lower, "papa") || containsWord(lower, "baap")) matches.add("father guide child portrait")
         if (lower.contains("भाई") || lower.contains("भैया") || containsWord(lower, "brother") || containsWord(lower, "bhai") || lower.contains("bhaiya")) matches.add("brother family smiling talking together")
         if (lower.contains("बहन") || lower.contains("दीदी") || containsWord(lower, "sister") || containsWord(lower, "behen") || lower.contains("didi")) matches.add("sister family smiling talking together")
         if (lower.contains("दोस्त") || lower.contains("मित्र") || containsWord(lower, "friends") || containsWord(lower, "friendship") || lower.contains("दोस्ती") || containsWord(lower, "dost") || containsWord(lower, "dosti") || containsWord(lower, "yaari") || containsWord(lower, "yaar")) matches.add("close friends laughing together")
         if (lower.contains("बच्चा") || lower.contains("बच्चे") || containsWord(lower, "child") || containsWord(lower, "kids") || containsWord(lower, "bacha") || containsWord(lower, "bache") || containsWord(lower, "bacche")) matches.add("cute happy children playing smiling")
-        if (lower.contains("सलाह") || lower.contains("सुझाव") || lower.contains("टिप्स") || containsWord(lower, "advice") || lower.contains("suggestion") || lower.contains("sujhav") || containsWord(lower, "tips")) matches.add("friendly advice discussion conversation")
+        if (lower.contains("सलाह") || lower.contains("सुझाव") || lower.contains("टिप्स") || containsWord(lower, "advice") || lower.contains("suggestion") || lower.contains("sujhav") || containsWord(lower, "tips")) matches.add("mentor guiding wisdom advice")
         if (lower.contains("घर") || lower.contains("महल") || containsWord(lower, "house") || containsWord(lower, "home") || containsWord(lower, "ghar") || containsWord(lower, "makan")) matches.add("warm cozy beautiful home")
 
         // 15. Emotions & Expressions
@@ -1268,7 +1325,7 @@ class GeminiService {
             "आवाज" to "microphone voice narration", "माइक" to "microphone recording studio", "स्टूडियो" to "recording studio sound booth",
             "वीडियो" to "video production camera", "रील" to "smartphone recording video", "कैमरा" to "camera lens recording",
             "स्क्रीन" to "smartphone screen display", "इंटरनेट" to "internet cyberspace technology",
-            "बात" to "conversation discussion people", "बातचीत" to "people talking discussion",
+            "बात" to "people talking dialogue", "बातचीत" to "people communicating dialogue",
             "लोग" to "people crowd community", "जनता" to "public audience gathering", "भीड़" to "crowd people city street",
             "परिवार" to "happy family home", "बच्चा" to "cute child playing", "बच्चे" to "children learning playing",
             "दोस्त" to "best friends meeting", "दोस्ती" to "friendship companions smiling", "साथी" to "team partners collaboration",
@@ -1428,14 +1485,20 @@ class GeminiService {
             "vivid natural illumination with pristine clarity and balanced exposure"
         )
 
+        val usedQueriesInFallback = mutableSetOf<String>()
         return sentences.mapIndexed { index, rawSentence ->
             val sceneNum = index + 1
             val cleanSentence = rawSentence.replace(Regex("[\"\\n\\r]"), " ").trim()
             val searchQuery = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
                 segmentText = cleanSentence,
                 proposedQuery = "",
-                style = style
+                style = style,
+                sceneNumber = sceneNum,
+                alreadyUsedQueries = usedQueriesInFallback
             )
+            if (searchQuery.isNotBlank()) {
+                usedQueriesInFallback.add(searchQuery.lowercase().trim())
+            }
             
             val chosenAngle = cameraAngles[index % cameraAngles.size]
             val chosenLighting = lightingAtmospheres[index % lightingAtmospheres.size]
@@ -2674,7 +2737,7 @@ class GeminiService {
         if (englishOnly.isNotEmpty()) {
             return@withContext englishOnly
         }
-        return@withContext "documentary news investigation"
+        return@withContext "news story investigation"
     }
 
     suspend fun generateScriptFromTopic(
@@ -5560,7 +5623,7 @@ class GeminiService {
                             indicators.addAll(listOf("Global Wellness & Longevity", "Clean Water & Sanitation", "Maternal Health & Vitality", "Universal Healthcare Access"))
                         }
                         for (ind in indicators.take(4)) {
-                            val prompt = "Inspiring modern editorial photograph representing $ind, warm natural lighting, uplifting human connection, global health, National Geographic style documentary photography"
+                            val prompt = "Inspiring modern editorial photograph representing $ind, warm natural lighting, uplifting human connection, global health, National Geographic style photojournalism photography"
                             val imgUrl = MediaSelectionService.buildPollinationsImageUrl(rawPrompt = prompt, width = 1080, height = 1920, seed = ind.hashCode())
                             addToBucket("WHO GHO", com.ritvyom.yashoraReelgenerator.domain.models.MediaSuggestion(
                                 url = imgUrl,
@@ -5735,7 +5798,17 @@ class GeminiService {
             q.contains("people") || q.contains("lifestyle") || q.contains("person") || q.contains("happy") ||
             q.contains("smile") || q.contains("friend") -> "lifestyle happy people"
             
-            else -> "authentic documentary lifestyle scene"
+            q.contains("news") || q.contains("report") || q.contains("breaking") || q.contains("headline") ||
+            q.contains("press") || q.contains("media") -> "breaking news broadcast television"
+
+            q.contains("police") || q.contains("court") || q.contains("law") || q.contains("legal") ||
+            q.contains("crime") || q.contains("investigat") -> "law courtroom gavel justice"
+
+            q.contains("history") || q.contains("historic") || q.contains("ancient") || q.contains("heritage") -> "historical monument architecture ancient"
+
+            q.contains("speech") || q.contains("leader") || q.contains("meeting") || q.contains("politics") -> "government leadership conference speech"
+
+            else -> "cinematic storytelling visual scene"
         }
     }
 

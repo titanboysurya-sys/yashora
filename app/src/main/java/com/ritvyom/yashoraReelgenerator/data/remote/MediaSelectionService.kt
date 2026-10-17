@@ -116,8 +116,10 @@ object MediaSelectionService {
         alreadyUsedUrls: Set<String> = emptySet()
     ): String {
         val combinedText = "$visualPrompt $customSearchQuery $narrationText $subtitle"
-        val sceneType = classifyScene(combinedText)
-        val (criticalEntity, mandatoryTokens) = extractCriticalEntityAndTokens(combinedText)
+        val spokenNarration = narrationText.ifEmpty { subtitle }.trim()
+        val textForEntity = if (spokenNarration.isNotBlank()) spokenNarration else "$visualPrompt $customSearchQuery"
+        val sceneType = classifyScene(if (spokenNarration.isNotBlank()) spokenNarration else combinedText)
+        val (criticalEntity, mandatoryTokens) = extractCriticalEntityAndTokens(textForEntity)
 
         val effectiveUnsplashKey = if (customUnsplashKey.isNotBlank()) customUnsplashKey else {
             try {
@@ -426,15 +428,31 @@ object MediaSelectionService {
     fun generateStructuredQuery(evalContext: EvaluationContext, customQuery: String): String {
         val scriptContent = evalContext.narrationText.ifEmpty { evalContext.subtitle.ifEmpty { evalContext.visualPrompt } }
         val cleanCustom = customQuery.trim()
+            .replace(Regex("(?i)\\bdocumentary\\b"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
         val hasNonAscii = cleanCustom.any { it.code > 127 }
         val isFluff = cleanCustom.isEmpty() ||
+                cleanCustom.contains("documentary", ignoreCase = true) ||
                 ScriptSemanticAnalysisEngine.BANNED_FLUFF_WORDS.any { cleanCustom.contains(it, ignoreCase = true) }
 
         if (!isFluff && cleanCustom.length > 3 && !hasNonAscii) {
             return cleanCustom
         }
 
-        // Direct Entity Resolution via Semantic Analysis Engine
+        // 1. HIGH PRECISION FEEDBACK LOOP: parse this specific scene's script segment directly
+        val feedbackQuery = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
+            segmentText = scriptContent,
+            proposedQuery = if (!isFluff && !hasNonAscii) cleanCustom else "",
+            style = evalContext.style,
+            sceneNumber = evalContext.sceneNum,
+            topicContext = evalContext.criticalEntity ?: ""
+        )
+        if (feedbackQuery.isNotEmpty() && !feedbackQuery.contains("story visual") && !feedbackQuery.contains("storytelling scene") && !feedbackQuery.contains("documentary", ignoreCase = true)) {
+            return ScriptSemanticAnalysisEngine.ensureEnglishSearchQuery(feedbackQuery, scriptContent, evalContext.style, evalContext.sceneNum)
+        }
+
+        // 2. Direct Entity Resolution (if entity was specifically mentioned in this scene)
         val entity = evalContext.criticalEntity
         if (!entity.isNullOrEmpty()) {
             return when (entity) {
@@ -445,28 +463,18 @@ object MediaSelectionService {
                 "Lion and Mouse Fable" -> "cute 3d animated little mouse and friendly lion in colorful fairytale forest"
                 "Tortoise and Hare Fable" -> "cute 3d animated tortoise and rabbit race in fairytale meadow"
                 "Mahatma Gandhi" -> "Mahatma Gandhi walking prayer meeting Birla House 1948 historical"
-                "Nathuram Godse" -> "Nathuram Godse historical documentary"
-                "Sardar Vallabhbhai Patel" -> "Sardar Vallabhbhai Patel historical documentary"
-                "Jawaharlal Nehru" -> "Jawaharlal Nehru historical documentary"
-                "Subhash Chandra Bose" -> "Subhash Chandra Bose historical documentary"
+                "Nathuram Godse" -> "Nathuram Godse historical courtroom archive 1948"
+                "Sardar Vallabhbhai Patel" -> "Sardar Vallabhbhai Patel Indian statesman vintage portrait"
+                "Jawaharlal Nehru" -> "Jawaharlal Nehru addressing nation vintage speech"
+                "Subhash Chandra Bose" -> "Subhash Chandra Bose Indian national army leader uniform"
                 "Birla House" -> "Birla House New Delhi 1948 Gandhi memorial historical"
                 "Clock 5:15" -> "vintage grandfather clock 5:15 PM antique"
                 "ISRO Gaganyaan Astronaut Space Mission" -> "Indian astronaut Gaganyaan space suit mission launchpad"
                 "ISRO Chandrayaan Lunar Space Mission" -> "Chandrayaan lunar rover space lander surface"
                 "ISRO Rocket Launch Space Mission" -> "ISRO rocket launch space center Sriharikota launchpad"
                 "ISRO Space Exploration Mission" -> "ISRO satellite orbiting earth deep space mission"
-                else -> "$entity historical documentary"
+                else -> "$entity authentic portrait"
             }
-        }
-
-        // HIGH PRECISION FEEDBACK LOOP: parse script segment directly
-        val feedbackQuery = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
-            segmentText = scriptContent,
-            proposedQuery = if (!isFluff && !hasNonAscii) cleanCustom else "",
-            style = evalContext.style
-        )
-        if (feedbackQuery.isNotEmpty() && !feedbackQuery.contains("authentic scene")) {
-            return ScriptSemanticAnalysisEngine.ensureEnglishSearchQuery(feedbackQuery, scriptContent, evalContext.style)
         }
 
         val baseQuery = when (evalContext.sceneType) {
@@ -489,7 +497,7 @@ object MediaSelectionService {
             SceneType.CLOCK_TIME -> "vintage grandfather clock 5:15 PM antique"
             SceneType.HISTORICAL_EVENT -> {
                 val kw = evalContext.keywords.take(3).joinToString(" ")
-                if (kw.isNotEmpty()) "$kw historical documentary archive" else "historical documentary 1948 archive"
+                if (kw.isNotEmpty()) "$kw historical archive photo" else "historical vintage archive photo"
             }
             SceneType.HISTORICAL_OBJECT -> "vintage antique historical object"
             SceneType.DOCUMENT -> {
@@ -516,16 +524,24 @@ object MediaSelectionService {
                 val precise = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
                     segmentText = scriptText,
                     proposedQuery = evalContext.keywords.firstOrNull() ?: "",
-                    style = evalContext.style
+                    style = evalContext.style,
+                    sceneNumber = evalContext.sceneNum,
+                    topicContext = evalContext.criticalEntity ?: ""
                 )
-                if (precise.isNotEmpty()) {
+                if (precise.isNotEmpty() && !precise.contains("documentary", ignoreCase = true)) {
                     precise
                 } else {
-                    "breaking news journalism broadcast report"
+                    when ((evalContext.sceneNum - 1).coerceAtLeast(0) % 5) {
+                        0 -> "breaking news event journalism broadcast"
+                        1 -> "focused character actions storytelling"
+                        2 -> "dramatic turning point investigation"
+                        3 -> "detailed close up narrative perspective"
+                        else -> "conclusive overview horizon perspective"
+                    }
                 }
             }
         }
-        return ScriptSemanticAnalysisEngine.ensureEnglishSearchQuery(baseQuery, scriptContent, evalContext.style)
+        return ScriptSemanticAnalysisEngine.ensureEnglishSearchQuery(baseQuery, scriptContent, evalContext.style, evalContext.sceneNum)
     }
 
     private fun generateAlternateQuery(evalContext: EvaluationContext): String {
@@ -2025,7 +2041,7 @@ object MediaSelectionService {
                 entity == "Tortoise and Hare Fable" ->
                     "Enchanting 3D Pixar animated storybook illustration, cute friendly tortoise and energetic fluffy rabbit racing in vibrant sunny green meadow, 8k render"
                 !entity.isNullOrEmpty() ->
-                    "Historical reconstruction documentary style, period-accurate environment, photorealistic 8k: $entity, $effectiveVisualPrompt"
+                    "Period-accurate historical reconstruction, photorealistic 8k: $entity, $effectiveVisualPrompt"
                 context.sceneType == SceneType.KIDS_STORY ->
                     "Enchanting 3D Pixar animated storybook illustration, adorable characters, vibrant colorful fairytale world, soft lighting, 8k render, family friendly, octane render: $effectiveVisualPrompt"
                 context.sceneType == SceneType.SPIRITUAL_SATSANG ->
@@ -2033,7 +2049,7 @@ object MediaSelectionService {
                 context.sceneType == SceneType.FOOD ->
                     "Gourmet culinary food photography, appetizing delicious recipe dish, professional kitchen presentation, fresh ingredients, warm appetizing restaurant lighting, photorealistic 8k: $effectiveVisualPrompt"
                 context.sceneType == SceneType.HISTORICAL_EVENT || context.sceneType == SceneType.HISTORICAL_PLACE ->
-                    "Historical archival documentary style, detailed period reconstruction, photorealistic 8k: $effectiveVisualPrompt"
+                    "Historical archival photo, detailed period reconstruction, photorealistic 8k: $effectiveVisualPrompt"
                 else ->
                     effectiveVisualPrompt
             }
@@ -2080,8 +2096,15 @@ object MediaSelectionService {
                 "vintage grandfather clock ticking"
             context.sceneType == SceneType.FOOD ->
                 "delicious gourmet food dish plating"
-            context.sceneType in listOf(SceneType.HISTORICAL_PERSON, SceneType.HISTORICAL_PLACE, SceneType.HISTORICAL_EVENT, SceneType.HISTORICAL_OBJECT) ->
-                "historical parchment archival scene"
+            context.sceneType in listOf(SceneType.HISTORICAL_PERSON, SceneType.HISTORICAL_PLACE, SceneType.HISTORICAL_EVENT, SceneType.HISTORICAL_OBJECT) -> {
+                val scriptText = context.narrationText.ifEmpty { context.subtitle.ifEmpty { context.visualPrompt } }
+                ScriptSemanticAnalysisEngine.generateRichContextualVisualPrompt(
+                    narrationText = scriptText,
+                    style = context.style,
+                    topicContext = context.criticalEntity ?: "",
+                    sceneNumber = context.sceneNum
+                )
+            }
             else -> {
                 val scriptText = context.narrationText.ifEmpty { context.subtitle.ifEmpty { context.visualPrompt } }
                 ScriptSemanticAnalysisEngine.generateRichContextualVisualPrompt(

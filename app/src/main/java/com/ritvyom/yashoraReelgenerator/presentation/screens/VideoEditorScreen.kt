@@ -8397,28 +8397,26 @@ fun MediaSwapGalleryPanel(
 
     val initialQuery = remember(currentScene.sceneNumber) {
         val narration = currentScene.narrationText.ifEmpty { currentScene.subtitle.ifEmpty { currentScene.visualPrompt } }
+        val firstKw = currentScene.keywords.firstOrNull { kw ->
+            val l = kw.lowercase().trim()
+            l.isNotBlank() && !l.contains("documentary") && !l.contains("cinematic") && !l.contains("scene")
+        }
         val raw = when {
-            currentScene.keywords.isNotEmpty() -> currentScene.keywords.first()
-            !currentScene.visualPrompt.isNullOrBlank() -> {
+            !firstKw.isNullOrBlank() -> firstKw
+            else -> {
                 com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
                     segmentText = narration,
-                    proposedQuery = currentScene.visualPrompt.split(".").firstOrNull() ?: ""
+                    proposedQuery = "",
+                    sceneNumber = currentScene.sceneNumber
                 )
             }
-            else -> {
-                val semanticRes = com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine.analyze(narration)
-                when {
-                    !semanticRes.criticalEntity.isNullOrEmpty() -> semanticRes.criticalEntity
-                    semanticRes.refinedKeywords.isNotEmpty() -> semanticRes.refinedKeywords.take(2).joinToString(" ")
-                    semanticRes.pexelsQuery.isNotEmpty() -> semanticRes.pexelsQuery.split(" ").take(3).joinToString(" ")
-                    else -> ""
-                }
-            }
         }
-        val clean = raw.replace(Regex("(?i)\\b(candid|real life candid|cinematic)\\b"), "").trim()
+        val clean = raw.replace(Regex("(?i)\\b(documentary|candid|real life candid|cinematic|atmospheric|scene)\\b"), " ")
+            .replace(Regex("\\s+"), " ").trim()
         clean.ifEmpty { 
             val tokens = com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine.refineKeywords(narration)
-            if (tokens.isNotEmpty()) tokens.take(2).joinToString(" ") else "news broadcast"
+            val filtered = tokens.filter { !it.contains("documentary", ignoreCase = true) }
+            if (filtered.isNotEmpty()) filtered.take(2).joinToString(" ") else "storytelling visual"
         }
     }
 

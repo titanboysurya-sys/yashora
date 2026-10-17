@@ -78,6 +78,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
 
     val selectedStyleName = MutableStateFlow("Cinematic")
     val selectedPublishingStyle = MutableStateFlow("TikTok / Instagram Reels")
+    val creativityLevel = MutableStateFlow(0.5f)
+
+    fun updateCreativityLevel(level: Float) {
+        creativityLevel.value = level.coerceIn(0.0f, 1.0f)
+    }
+
     val selectedVoiceName = MutableStateFlow("Professional Man")
     val selectedVoiceCategory = MutableStateFlow("Male") // Male, Female, Child
     val voiceSpeed = MutableStateFlow(1.0f)
@@ -2838,7 +2844,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                 status = "Draft",
                 scenesJson = if (activeScenes.value.isNotEmpty()) scenesAdapter.toJson(activeScenes.value) else "",
                 topicContext = topicContext.value,
-                publishingStyle = selectedPublishingStyle.value
+                publishingStyle = selectedPublishingStyle.value,
+                creativityLevel = creativityLevel.value
             )
             val projId = repository.insertProject(entity)
             activeProject.value = entity.copy(id = projId.toInt())
@@ -3310,6 +3317,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
         topicContext.value = project.topicContext
         selectedStyleName.value = project.videoStyle
         selectedPublishingStyle.value = project.publishingStyle
+        creativityLevel.value = project.creativityLevel
         selectedVoiceName.value = project.voiceName
         selectedVoiceCategory.value = project.voiceCategory
         selectedLanguage.value = project.language
@@ -5834,6 +5842,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                         topicContext = normalizedTopicForMatch,
                         publishingStyle = selectedPublishingStyle.value,
                         sourceSpecificMedia = sourceSpecificMediaList,
+                        creativityLevel = creativityLevel.value,
                         onProgress = { current, total, statusMsg ->
                             val progressFraction = if (total > 0) 0.18f + (current.toFloat() / total.toFloat()) * 0.37f else 0.20f
                             generationProgress.value = progressFraction.coerceIn(0.18f, 0.55f)
@@ -6855,7 +6864,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application), T
                     aspectRatio = selectedAspectRatio.value,
                     topicContext = topicContextState,
                     imageSource = selectedImageSource.value,
-                    sourceSpecificMedia = sourceSpecificMediaList
+                    sourceSpecificMedia = sourceSpecificMediaList,
+                    creativityLevel = creativityLevel.value
                 )
                 previewProgress.value = 0.90f
                 previewStatus.value = "Preparing cinematic slideshow layout..."

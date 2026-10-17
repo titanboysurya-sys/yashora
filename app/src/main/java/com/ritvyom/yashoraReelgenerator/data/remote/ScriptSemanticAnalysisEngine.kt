@@ -31,7 +31,8 @@ object ScriptSemanticAnalysisEngine {
         "vibrant", "crime", "vibrant crime", "crime vibrant", "vibrant, crime", "crime, vibrant",
         "vibrant scenic visual", "news studio television broadcast", "courtroom gavel",
         "generic", "placeholder", "trending", "viral", "headline", "breaking news",
-        "news broadcast", "studio", "breaking", "update", "report", "news report", "clip", "broll", "b-roll", "stock"
+        "news broadcast", "studio", "breaking", "update", "report", "news report", "clip", "broll", "b-roll", "stock",
+        "documentary", "documentary photo", "documentary news", "documentary sequence", "historical documentary", "documentary visual", "documentary lifestyle", "documentary scene"
     )
 
     data class SemanticAnalysisResult(
@@ -88,7 +89,7 @@ object ScriptSemanticAnalysisEngine {
 
         // 6. Technology & Digital
         "मोबाइल" to "smartphone screen hands", "फोन" to "smartphone screen", "स्मार्टफोन" to "smartphone modern technology",
-        "लैपटॉप" to "laptop keyboard typing", "कंप्यूटर" to "computer desktop screen",
+        "लैपटॉप" to "computer desktop screen typing", "कंप्यूटर" to "computer desktop screen",
         "कोडिंग" to "programming code screen", "इंटरनेट" to "modern digital technology",
         "कैमरा" to "dslr camera filming lens", "वीडियो" to "video camera recording", "यूट्यूब" to "content creator video recording",
 
@@ -203,7 +204,74 @@ object ScriptSemanticAnalysisEngine {
         // 22. Public Protests, Movements & Crowds
         "प्रदर्शन" to "crowd protest demonstration rally", "हड़ताल" to "strike workers protest banners",
         "धरना" to "peaceful protest sit in demonstration", "आंदोलन" to "public demonstration movement crowd",
-        "नारेबाजी" to "crowd shouting slogans rally"
+        "नारेबाजी" to "crowd shouting slogans rally",
+
+        // 23. Everyday Actions, Life & Human Expressions
+        "कहा" to "spoke statement announcement", "फैसला" to "important decision historic moment",
+        "सोचा" to "contemplative thinking person", "शुरुआत" to "beginning journey opening",
+        "खत्म" to "conclusion final achievement", "काम" to "focused dedicated work action",
+        "सफलता" to "triumphant victory success celebration", "मेहनत" to "hardworking dedicated effort",
+        "संघर्ष" to "courageous struggle determination", "मंजिल" to "destination goal horizon",
+        "सपना" to "aspirational vision dream future", "उम्मीद" to "hope bright sunrise future",
+        "विश्वास" to "trust confidence strength", "खुशी" to "joyful happy smiling celebration",
+        "दुख" to "somber emotional moment sorrow", "हंसी" to "joyful laughter smiling people",
+        "बातचीत" to "spokesperson interview statement", "चर्चा" to "public news report press",
+        "तैयारी" to "active preparation planning setup", "बदलाव" to "revolutionary change transformation",
+        "मदद" to "helping hands compassion support", "साथ" to "togetherness teamwork unity",
+
+        // 24. Places, Architecture, Urban & Rural Environments
+        "घर" to "home cozy interior", "मकान" to "modern residential house architecture",
+        "कमरा" to "room sunlight interior", "दरवाजा" to "open door welcoming entrance",
+        "खिड़की" to "window sunlight outside view", "सड़क" to "highway road open journey",
+        "गली" to "historic city alleyway street", "बाजार" to "vibrant marketplace crowd shopping",
+        "दुकान" to "local retail store shopping", "पुल" to "grand bridge over river",
+        "स्टेशन" to "railway station platform arrival", "हवाई अड्डा" to "airport terminal aircraft",
+        "नहर" to "flowing water canal waterway", "तालाब" to "peaceful lotus pond serene water",
+        "मंदिर" to "ancient sacred stone temple architecture", "मस्जिद" to "historic mosque architecture",
+        "गुरुद्वारा" to "golden gurudwara peaceful sarovar", "चर्च" to "historic church cathedral architecture",
+
+        // 25. Nature, Elements, Water & Atmosphere
+        "हवा" to "gentle wind green trees breeze", "आसमान" to "vast blue open sky horizon",
+        "बादल" to "dramatic fluffy white clouds sky", "धूप" to "golden sunlight shining warmth",
+        "छांव" to "peaceful tree shade resting", "मिट्टी" to "fertile rich earth soil",
+        "पत्थर" to "ancient rock stone mountain", "फूल" to "blooming colorful garden flowers",
+        "पत्ता" to "fresh green leaf dewdrops", "पानी" to "crystal clear pure flowing water",
+        "झील" to "tranquil mountain lake reflections", "समुद्र" to "blue ocean waves scenic shore",
+
+        // 26. People, Society, Generations & Family
+        "लोग" to "people crowd public diversity", "जनता" to "citizens crowd civic community",
+        "नागरिक" to "proud citizens nation flag", "बच्चे" to "happy children playing outdoors",
+        "युवा" to "ambitious youth young generation", "बुजुर्ग" to "elderly person dignified portrait",
+        "महिला" to "empowered woman smiling confident", "पुरुष" to "focused man working dedicated",
+        "दोस्त" to "close friends laughing together", "परिवार" to "loving happy family home",
+        "देश" to "patriotic nation cultural heritage", "भारत" to "vibrant india national pride culture",
+        "संसार" to "global planet earth community", "दुनिया" to "world diverse cultures civilization",
+
+        // 27. Narrative Transitions, Turning Points, Mystery & Revelations
+        "रहस्य" to "mystery secret ancient puzzle", "सच्चाई" to "truth reality revealed facts",
+        "सच" to "authentic truth facts", "झूठ" to "deception false claims",
+        "खुलासा" to "shocking revelation discovery exposed", "सबूत" to "crucial evidence documents proof",
+        "संदेह" to "suspicious investigation clues", "शक" to "suspicious mystery detective clues",
+        "मोड़" to "unexpected dramatic turning point", "हैरान" to "astonished stunned facial expression",
+        "चौंकाने" to "shocking dramatic turn of events", "अजीब" to "mysterious enigmatic visual",
+        "सवाल" to "intense questioning scrutiny press", "जवाब" to "official answer response statement",
+        "कारण" to "underlying reason root cause analysis", "नतीजा" to "consequence dramatic aftermath outcome",
+        "परिणाम" to "impact consequence results", "सबक" to "inspirational lesson moral realization",
+        "सीख" to "meaningful life lesson guidance", "संदेश" to "inspirational message vision",
+        "उद्देश्य" to "purpose focused determination goal", "मंजिल" to "destination journey summit horizon",
+        "कदम" to "bold forward initiative milestone", "फैसला" to "monumental decision official announcement",
+        "कोशिश" to "relentless dedicated effort struggle", "संकट" to "critical crisis urgent situation",
+        "चुनौती" to "formidable challenge obstacle hurdle", "समाधान" to "innovative breakthrough solution",
+        "सपना" to "aspirational vision future dream", "हकीकत" to "harsh grounded reality authentic",
+        "जीत" to "triumphant victory celebration trophy", "हार" to "resilient setback determination",
+        "चिंता" to "worried serious concerned facial expression", "राहत" to "profound relief calm peaceful",
+        "दावा" to "bold formal claim statement", "कार्रवाई" to "official law enforcement administrative action",
+        "दौरा" to "official high level diplomatic tour visit", "स्वागत" to "grand ceremonial welcome celebration",
+        "समीक्षा" to "high level review meeting analysis", "निरीक्षण" to "official inspection site walkthrough",
+        "भेंट" to "diplomatic summit handshake meeting", "मुलाकात" to "important bilateral leaders conference",
+        "घोषणा" to "grand official policy declaration announcement", "चेतावनी" to "stern urgent warning alert advisory",
+        "योजना" to "strategic blueprint development project", "परियोजना" to "large infrastructure construction project",
+        "ऐतिहासिक" to "historic milestone momentous occasion"
     )
 
     fun analyze(segmentText: String, style: String = "", sceneIndex: Int = 0): SemanticAnalysisResult {
@@ -232,13 +300,12 @@ object ScriptSemanticAnalysisEngine {
                 lower.contains("संत") || lower.contains("saint") || lower.contains("वृंदावन") || lower.contains("vrindavan") ||
                 lower.contains("आश्रम") || lower.contains("ashram") || lower.contains("भक्ति") || lower.contains("bhakti")
 
-        val isKidsStory = lower.contains("कहानी") || lower.contains("कहानियां") || lower.contains("कहानियाँ") ||
-                lower.contains("kahani") || lower.contains("story") || lower.contains("fable") ||
-                lower.contains("fairytale") || lower.contains("fairy tale") || lower.contains("kids story") ||
-                lower.contains("children story") || lower.contains("पंचतंत्र") || lower.contains("panchatantra") ||
-                lower.contains("बच्चों") || lower.contains("बच्चे") || lower.contains("बाल कहानी") ||
+        val isKidsStory = (lower.contains("पंचतंत्र") || lower.contains("panchatantra") ||
+                lower.contains("बच्चों की कहानी") || lower.contains("बाल कहानी") ||
+                lower.contains("fairytale") || lower.contains("fairy tale") ||
                 styleLower.contains("cartoon") || styleLower.contains("3d animation") || styleLower.contains("pixar") ||
-                styleLower.contains("storytelling") || styleLower.contains("kids")
+                (styleLower.contains("kids") && !lower.contains("news") && !lower.contains("हादसा"))) &&
+                !lower.contains("news") && !lower.contains("न्यूज") && !lower.contains("हादसा") && !lower.contains("फैसला")
 
         // Kids Fable Characters
         val hasLion = lower.contains("शेर") || lower.contains("lion") || lower.contains("sher")
@@ -385,7 +452,7 @@ object ScriptSemanticAnalysisEngine {
                 pixabayQuery = "gandhi historical archive",
                 pixabayImageType = "photo",
                 wikimediaQuery = "Mahatma Gandhi",
-                aiPrompt = "Historical documentary archival portrait of Mahatma Gandhi, Birla House 1948, black and white authentic realism"
+                aiPrompt = "Historical archival vintage portrait of Mahatma Gandhi, Birla House 1948, black and white authentic realism"
             )
         }
 
@@ -399,7 +466,7 @@ object ScriptSemanticAnalysisEngine {
                 pixabayQuery = "court trial historical archive",
                 pixabayImageType = "photo",
                 wikimediaQuery = "Nathuram Godse",
-                aiPrompt = "Historical courtroom trial archive 1948, vintage documentary photograph"
+                aiPrompt = "Historical courtroom trial archive 1948, vintage authentic photograph"
             )
         }
 
@@ -415,11 +482,11 @@ object ScriptSemanticAnalysisEngine {
                 sceneType = MediaSelectionService.SceneType.HISTORICAL_PERSON,
                 mandatoryTokens = listOf(leader.lowercase(), "historical"),
                 refinedKeywords = listOf(leader, "Freedom Fighter", "India"),
-                pexelsQuery = "$leader historical documentary",
+                pexelsQuery = "$leader historical archive",
                 pixabayQuery = "$leader historical archive",
                 pixabayImageType = "photo",
                 wikimediaQuery = leader,
-                aiPrompt = "Authentic historical documentary photo of $leader, vintage archive realism"
+                aiPrompt = "Authentic historical archival photo of $leader, vintage archive realism"
             )
         }
 
@@ -702,7 +769,7 @@ object ScriptSemanticAnalysisEngine {
                 pixabayQuery = specificPexelsQuery,
                 pixabayImageType = "photo",
                 wikimediaQuery = "Armed forces",
-                aiPrompt = "Authentic military defense documentary scene, $specificPexelsQuery, sharp photorealistic details, 4k"
+                aiPrompt = "Authentic military defense tactical scene, $specificPexelsQuery, sharp photorealistic details, 4k"
             )
         }
 
@@ -869,25 +936,30 @@ object ScriptSemanticAnalysisEngine {
     /**
      * CORE FEEDBACK LOOP:
      * Validates and refines any proposed query against the actual script segment tokens.
-     * - Strips banned fluff words ("atmospheric", "cinematic", "scene", "view", etc.).
+     * - Strips banned fluff words ("atmospheric", "cinematic", "scene", "view", "documentary", etc.).
      * - If proposed query retains clean, concrete words matching the script context, accepts them (even 1-4 concise keywords).
-     * - If proposed query is empty or purely generic, overrides with tokens parsed directly
+     * - ZERO REPETITION ENFORCEMENT: Never accepts a proposed query if it was already used in an earlier scene of this reel!
+     * - If proposed query is empty, repeated, or purely generic, overrides with tokens parsed directly
      *   from the script segment narration/voiceover text.
      */
     fun refineHighPrecisionSearchQuery(
         segmentText: String,
         proposedQuery: String = "",
-        style: String = ""
+        style: String = "",
+        sceneNumber: Int = 1,
+        alreadyUsedQueries: Set<String> = emptySet(),
+        topicContext: String = ""
     ): String {
         val cleanSeg = segmentText.trim()
         val segLower = cleanSeg.lowercase()
-        val analysis = if (cleanSeg.isNotEmpty()) analyze(cleanSeg, style) else null
+        val analysis = if (cleanSeg.isNotEmpty()) analyze(cleanSeg, style, sceneNumber - 1) else null
         val derived = analysis?.pexelsQuery?.trim() ?: ""
         val derivedWords = derived.split(Regex("\\s+"))
-            .filter { it.lowercase() !in BANNED_FLUFF_WORDS }
+            .filter { it.lowercase() !in BANNED_FLUFF_WORDS && !it.equals("documentary", ignoreCase = true) }
         val derivedQuery = if (derivedWords.isNotEmpty()) derivedWords.take(4).joinToString(" ") else ""
 
         val cleanProposed = proposedQuery.trim()
+            .replace(Regex("(?i)\\bdocumentary\\b"), " ")
             .replace(Regex("[\"\'!?,.;:\\[\\]()]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
@@ -895,7 +967,7 @@ object ScriptSemanticAnalysisEngine {
         // Filter proposedQuery to remove banned fluff words
         val proposedWords = cleanProposed.split(" ")
             .map { it.trim().lowercase() }
-            .filter { it.isNotEmpty() && it !in BANNED_FLUFF_WORDS && it.length >= 2 }
+            .filter { it.isNotEmpty() && it !in BANNED_FLUFF_WORDS && it.length >= 2 && it != "documentary" }
 
         val isCleanEnglish = cleanProposed.isNotEmpty() && cleanProposed.all { it.code <= 127 }
         if (isCleanEnglish && proposedWords.isNotEmpty()) {
@@ -903,7 +975,8 @@ object ScriptSemanticAnalysisEngine {
             val candLower = candidate.lowercase()
 
             val isGenericTag = BANNED_FLUFF_WORDS.any { candLower == it || candLower.contains(it) } ||
-                    candLower in setOf("crime", "vibrant", "news", "report", "clip", "footage", "video", "photo", "image", "media", "story")
+                    candLower.contains("documentary") ||
+                    candLower in setOf("crime", "vibrant", "news", "report", "clip", "footage", "video", "photo", "image", "media", "story", "documentary")
 
             // Check if candidate is falsely attributing crime or police to an unrelated scene
             val hasExplicitCrime = segLower.contains("police") || segLower.contains("पुलिस") ||
@@ -911,33 +984,133 @@ object ScriptSemanticAnalysisEngine {
                     segLower.contains("थाना") || segLower.contains("चोरी") || segLower.contains("कत्ल") || segLower.contains("murder")
             val isCrimeHallucination = (candLower.contains("crime") || candLower.contains("police") || candLower.contains("court")) && !hasExplicitCrime
 
-            if (!isGenericTag && !isCrimeHallucination) {
-                // If candidate has concrete words matching the segment or if derivedQuery is not available, accept candidate
-                if (derivedQuery.isEmpty() || proposedWords.any { segLower.contains(it) }) {
-                    return candidate
-                }
+            // Zero-Repetition Check across scenes in the video reel
+            val isAlreadyUsedInReel = alreadyUsedQueries.isNotEmpty() && alreadyUsedQueries.any { used ->
+                val u = used.lowercase().trim()
+                u == candLower || (u.length > 5 && candLower == u) || (candLower.length > 6 && u.contains(candLower)) || (u.length > 6 && candLower.contains(u))
+            }
+
+            if (!isGenericTag && !isCrimeHallucination && !isAlreadyUsedInReel) {
+                return candidate
             }
         }
 
-        // Return derived query parsed directly from the exact spoken words
-        if (derivedQuery.isNotEmpty()) {
-            return derivedQuery
-        }
-
+        // 1. First priority: extract concrete content tokens directly from THIS scene's spoken words
         val contentWords = extractContentTokens(segLower)
         if (contentWords.isNotEmpty()) {
-            return contentWords.take(3).joinToString(" ")
+            val cand = contentWords.take(3).joinToString(" ")
+            val isUsed = alreadyUsedQueries.any { it.equals(cand, ignoreCase = true) }
+            if (!isUsed) {
+                return cand
+            }
+            if (contentWords.size > 3) {
+                val alt = contentWords.drop(1).take(3).joinToString(" ")
+                if (!alreadyUsedQueries.any { it.equals(alt, ignoreCase = true) }) {
+                    return alt
+                }
+            }
+            val stageModifier = when ((sceneNumber - 1).coerceAtLeast(0) % 5) {
+                0 -> "establishing"
+                1 -> "action"
+                2 -> "close up"
+                3 -> "detail"
+                else -> "perspective"
+            }
+            return "$cand $stageModifier"
+        }
+
+        // 2. Return derived query parsed from semantic entity analysis
+        if (derivedQuery.isNotEmpty() && !derivedQuery.contains("documentary") && !derivedQuery.contains("narrative visual")) {
+            val isUsed = alreadyUsedQueries.any { it.equals(derivedQuery, ignoreCase = true) }
+            if (!isUsed) {
+                return derivedQuery
+            }
         }
 
         val cleanWords = cleanSeg.replace(Regex("[^a-zA-Z0-9\\s]"), " ")
             .split(Regex("\\s+"))
             .map { it.trim().lowercase() }
-            .filter { it.length >= 2 && it !in BANNED_FLUFF_WORDS }
-        return if (cleanWords.isNotEmpty()) {
-            cleanWords.take(3).joinToString(" ")
-        } else {
-            "documentary news narrative visual"
+            .filter { it.length >= 2 && it !in BANNED_FLUFF_WORDS && it != "documentary" }
+        if (cleanWords.isNotEmpty()) {
+            val cand = cleanWords.take(3).joinToString(" ")
+            if (!alreadyUsedQueries.any { it.equals(cand, ignoreCase = true) }) {
+                return cand
+            }
         }
+
+        // 3. Dynamic contextual fallback based on topic, narrative phrasing, and scene number (NEVER generic 'documentary')
+        val topicLower = topicContext.lowercase().trim()
+        val contextualCandidates = when {
+            topicLower.contains("space") || topicLower.contains("इसरो") || topicLower.contains("rocket") -> listOf(
+                "rocket launchpad space", "satellite orbiting earth space", "astronaut spacesuit cabin",
+                "space control room screens", "starry cosmos galaxy", "lunar moon surface crater"
+            )
+            topicLower.contains("news") || topicLower.contains("crime") || topicLower.contains("court") -> listOf(
+                "breaking news broadcast television", "courtroom gavel law books", "press conference microphones media",
+                "police car flashing lights", "official document paperwork desk", "investigation detective files"
+            )
+            topicLower.contains("tech") || topicLower.contains("ai") || topicLower.contains("code") -> listOf(
+                "programmer coding screen terminal", "futuristic digital chip technology", "modern technology screens",
+                "data center server lights", "digital interface visual", "artificial intelligence robotic"
+            )
+            topicLower.contains("food") || topicLower.contains("recipe") || topicLower.contains("cooking") -> listOf(
+                "chopping vegetables cutting board", "sizzling pan cooking oil", "fresh delicious recipe dish",
+                "chef garnishing plate food", "aromatic spices cooking pot", "delicious meal restaurant table"
+            )
+            topicLower.contains("finance") || topicLower.contains("business") || topicLower.contains("market") -> listOf(
+                "corporate financial strategy", "stock market financial chart", "corporate office skyscrapers",
+                "handshake business deal", "cash currency money banking", "financial trader monitors"
+            )
+            segLower.contains("शुरुआत") || segLower.contains("पहला") || segLower.contains("begin") || segLower.contains("start") -> listOf(
+                "story opening scene", "sunrise morning open road", "focused person looking forward"
+            )
+            segLower.contains("लेकिन") || segLower.contains("मगर") || segLower.contains("turning") -> listOf(
+                "dramatic turning point", "person thinking deeply", "serious contemplation decision"
+            )
+            segLower.contains("सोच") || segLower.contains("विचार") || segLower.contains("thought") -> listOf(
+                "contemplative thoughtful person", "person sitting by window", "thoughtful reflection expression"
+            )
+            segLower.contains("बात") || segLower.contains("चर्चा") || segLower.contains("speak") -> listOf(
+                "public speech podium", "press statement microphone", "media interview speaking"
+            )
+            segLower.contains("काम") || segLower.contains("work") -> listOf(
+                "focused dedicated action", "creative workspace desk", "dedicated effort craftsmanship"
+            )
+            segLower.contains("सफर") || segLower.contains("यात्रा") || segLower.contains("journey") -> listOf(
+                "travel journey adventure road", "highway landscape open road", "scenic mountain path route"
+            )
+            else -> listOf(
+                "cinematic storytelling scene",
+                "city street crowd movement",
+                "scenic landscape horizon",
+                "dramatic moment atmosphere",
+                "close up hands writing document",
+                "modern digital technology screen",
+                "open road sunrise journey"
+            )
+        }
+
+        // Return first candidate in list that has not already been used in an earlier scene
+        for (cand in contextualCandidates) {
+            val candLower = cand.lowercase()
+            val alreadyUsed = alreadyUsedQueries.any { used ->
+                val u = used.lowercase().trim()
+                u == candLower || (u.length > 5 && candLower == u) || (candLower.length > 6 && u.contains(candLower))
+            }
+            if (!alreadyUsed) {
+                return cand
+            }
+        }
+
+        // If all candidates in the list have been used, pick with modulo and append scene modifier
+        val baseCand = contextualCandidates[(sceneNumber - 1).coerceAtLeast(0) % contextualCandidates.size]
+        val stageSuffix = when ((sceneNumber - 1).coerceAtLeast(0) % 4) {
+            0 -> "wide angle"
+            1 -> "close up"
+            2 -> "detail view"
+            else -> "perspective"
+        }
+        return "$baseCand $stageSuffix"
     }
 
     /**
@@ -945,14 +1118,29 @@ object ScriptSemanticAnalysisEngine {
      * is 100% in English (ASCII characters only), regardless of what language the user's script
      * was written in (Hindi, Hinglish, Marathi, Bengali, Spanish, etc.).
      */
-    fun ensureEnglishSearchQuery(query: String, segmentContext: String = "", style: String = ""): String {
+    /**
+     * Guarantees that any query returned for stock media (Pexels, Pixabay, Unsplash, Pollinations AI)
+     * is 100% in English (ASCII characters only), regardless of what language the user's script
+     * was written in (Hindi, Hinglish, Marathi, Bengali, Spanish, etc.), and never contains 'documentary'.
+     */
+    fun ensureEnglishSearchQuery(
+        query: String,
+        segmentContext: String = "",
+        style: String = "",
+        sceneNumber: Int = 1,
+        alreadyUsedQueries: Set<String> = emptySet()
+    ): String {
         val trimmed = query.trim()
+            .replace(Regex("(?i)\\bdocumentary\\b"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
         val hasNonAscii = trimmed.any { it.code > 127 }
         if (!hasNonAscii && trimmed.isNotEmpty()) {
-            val words = trimmed.split(Regex("\\s+")).filter { it.lowercase() !in BANNED_FLUFF_WORDS }
+            val words = trimmed.split(Regex("\\s+")).filter { it.lowercase() !in BANNED_FLUFF_WORDS && it.lowercase() != "documentary" }
             if (words.isNotEmpty()) {
                 val cand = words.take(4).joinToString(" ")
-                if (cand.all { it.code <= 127 } && cand.isNotBlank()) {
+                val isUsed = alreadyUsedQueries.any { it.equals(cand, ignoreCase = true) }
+                if (cand.all { it.code <= 127 } && cand.isNotBlank() && !isUsed && !cand.contains("documentary", ignoreCase = true)) {
                     return cand
                 }
             }
@@ -962,22 +1150,27 @@ object ScriptSemanticAnalysisEngine {
         val candidate = refineHighPrecisionSearchQuery(
             segmentText = if (segmentContext.isNotBlank()) segmentContext else trimmed,
             proposedQuery = if (!hasNonAscii) trimmed else "",
-            style = style
+            style = style,
+            sceneNumber = sceneNumber,
+            alreadyUsedQueries = alreadyUsedQueries
         )
-        if (candidate.isNotEmpty() && !candidate.any { it.code > 127 }) {
+        if (candidate.isNotEmpty() && !candidate.any { it.code > 127 } && !candidate.contains("documentary", ignoreCase = true)) {
             return candidate
         }
 
         // Check local translation tokens
         val contentTokens = extractContentTokens((trimmed + " " + segmentContext).lowercase())
-        val englishOnlyTokens = contentTokens.filter { it.all { ch -> ch in 'a'..'z' || ch in '0'..'9' || ch == ' ' } && it !in BANNED_FLUFF_WORDS }
+        val englishOnlyTokens = contentTokens.filter { it.all { ch -> ch in 'a'..'z' || ch in '0'..'9' || ch == ' ' } && it !in BANNED_FLUFF_WORDS && it != "documentary" }
         if (englishOnlyTokens.isNotEmpty()) {
-            return englishOnlyTokens.take(3).joinToString(" ")
+            val cand = englishOnlyTokens.take(3).joinToString(" ")
+            if (!alreadyUsedQueries.any { it.equals(cand, ignoreCase = true) }) {
+                return cand
+            }
         }
 
         // Contextual category fallback
         val fullLower = (trimmed + " " + segmentContext).lowercase()
-        return when {
+        val catFallback = when {
             fullLower.contains("accident") || fullLower.contains("हादसा") || fullLower.contains("घायल") || fullLower.contains("bus") || fullLower.contains("बस") -> "passenger bus road incident"
             fullLower.contains("police") || fullLower.contains("पुलिस") || fullLower.contains("arrest") || fullLower.contains("गिरफ्तार") -> "police officer patrol car"
             fullLower.contains("court") || fullLower.contains("कोर्ट") || fullLower.contains("अदालत") || fullLower.contains("judge") -> "law courtroom gavel justice"
@@ -989,8 +1182,16 @@ object ScriptSemanticAnalysisEngine {
             fullLower.contains("space") || fullLower.contains("इसरो") || fullLower.contains("रॉकेट") || fullLower.contains("rocket") -> "space rocket launch mission"
             fullLower.contains("food") || fullLower.contains("खाना") || fullLower.contains("रेसिपी") || fullLower.contains("recipe") -> "delicious cooking food recipe"
             fullLower.contains("car") || fullLower.contains("गाड़ी") || fullLower.contains("कार") || fullLower.contains("road") -> "modern highway driving road"
-            else -> "news documentary journalism story event"
+            else -> when ((sceneNumber - 1).coerceAtLeast(0) % 6) {
+                0 -> "cinematic storytelling visual"
+                1 -> "focused subject closeup portrait"
+                2 -> "city street crowd movement"
+                3 -> "scenic highway landscape horizon"
+                4 -> "dramatic lighting atmosphere"
+                else -> "open road sunrise journey"
+            }
         }
+        return catFallback
     }
 
     /**
@@ -1242,29 +1443,48 @@ object ScriptSemanticAnalysisEngine {
             }
 
             // Kids & Fables
-            lower.contains("कहानी") || lower.contains("kahani") || lower.contains("fable") || lower.contains("fairytale") -> {
+            (lower.contains("पंचतंत्र") || lower.contains("panchatantra") || lower.contains("fairy tale") || lower.contains("fairytale") ||
+                    (lower.contains("fable") && (lower.contains("lion") || lower.contains("tortoise") || lower.contains("rabbit")))) -> {
                 "Charming 3D Pixar animated characters exploring an enchanted vibrant storybook world filled with whimsical flora"
             }
 
             // Fallback derived directly from mapped semantic tokens
             else -> {
                 val derivedTokens = extractContentTokens(lower)
-                val topicTokens = extractContentTokens(cleanTopic.lowercase())
-                val combinedTokens = (derivedTokens + topicTokens).distinct().take(4)
-                if (combinedTokens.isNotEmpty()) {
-                    val joinedSubject = combinedTokens.joinToString(" ")
-                    "Authentic narrative visual depicting $joinedSubject, capturing the unfolding real-world events"
+                if (derivedTokens.isNotEmpty()) {
+                    val joinedSubject = derivedTokens.joinToString(" ")
+                    "Authentic visual sequence depicting $joinedSubject, capturing the unfolding real-world events"
                 } else {
-                    "Realistic narrative scene depicting the key story development"
+                    // Generate scene-stage varied visuals so scenes 2, 3, 4, 5... never repeat identical prompts
+                    val stageVisual = when ((sceneNumber - 1).coerceAtLeast(0) % 6) {
+                        0 -> "Establishing wide panoramic environment with atmospheric depth"
+                        1 -> "Dynamic character actions and movements in central focus"
+                        2 -> "Close-up detail framing highlighting key objects and meaningful elements"
+                        3 -> "Atmospheric setting details with dynamic subject interaction"
+                        4 -> "Climactic dramatic action moment capturing narrative momentum"
+                        else -> "Inspiring conclusive perspective with expansive horizon"
+                    }
+                    if (cleanTopic.isNotBlank() && sceneNumber == 1) {
+                        "$stageVisual representing $cleanTopic"
+                    } else {
+                        stageVisual
+                    }
                 }
             }
         }
 
-        val topicSentence = if (cleanTopic.isNotBlank() && !concreteActionDescription.contains(cleanTopic, ignoreCase = true)) {
-            " Directly representing: \"$cleanTopic\"."
+        // Only anchor overall topic on scene 1, never repeat topic string across subsequent scenes!
+        val topicSentence = if (cleanTopic.isNotBlank() && sceneNumber == 1 && !concreteActionDescription.contains(cleanTopic, ignoreCase = true)) {
+            " Directly establishing: \"$cleanTopic\"."
         } else ""
 
-        return "A cinematic $styleClean sequence: $concreteActionDescription.$topicSentence " +
+        val safeStyle = when {
+            styleClean.contains("documentary", ignoreCase = true) -> "Cinematic Editorial"
+            styleClean.isBlank() -> "Cinematic"
+            else -> styleClean
+        }
+
+        return "A cinematic $safeStyle sequence: $concreteActionDescription.$topicSentence " +
                 "$chosenAngle. " +
                 "Rendered with $chosenLighting, highly detailed authentic textures, and realistic 4K depth of field."
     }

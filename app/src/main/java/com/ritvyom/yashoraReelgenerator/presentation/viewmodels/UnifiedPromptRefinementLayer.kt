@@ -258,10 +258,16 @@ object UnifiedPromptRefinementLayer {
         val bannedNewsFluff = setOf(
             "ndtv", "aaj tak", "abp news", "bbc", "news18", "zee news", "republic",
             "breaking news broadcast", "news studio television broadcast", "news anchor",
-            "courtroom gavel", "police officer", "news headline", "viral news"
+            "courtroom gavel", "police officer", "news headline", "viral news",
+            "documentary", "documentary photo", "documentary news", "historical documentary",
+            "documentary visual", "documentary scene", "documentary lifestyle"
         )
 
+        val usedQueriesAcrossReel = mutableSetOf<String>()
+        val firstSceneInitialQuery = scenes.firstOrNull()?.keywords?.firstOrNull()?.lowercase()?.trim() ?: ""
+
         return scenes.mapIndexed { index, scene ->
+            val sceneNum = index + 1
             val narration = scene.narrationText.ifEmpty { scene.subtitle }
             val existingPrompt = scene.visualPrompt
 
@@ -269,17 +275,30 @@ object UnifiedPromptRefinementLayer {
             val cleanNarr = cleanScriptText(narration)
 
             // 1. Refine concrete stock search query from narrative tokens
-            val initialProposed = scene.keywords.firstOrNull() ?: ""
+            val rawProposed = scene.keywords.firstOrNull() ?: ""
+            val rawProposedLower = rawProposed.lowercase().trim()
+            val isRepeatedFromEarlier = index > 0 && (
+                rawProposedLower == firstSceneInitialQuery ||
+                usedQueriesAcrossReel.contains(rawProposedLower) ||
+                (firstSceneInitialQuery.length > 5 && rawProposedLower.contains(firstSceneInitialQuery)) ||
+                rawProposedLower.contains("documentary")
+            )
+            val initialProposed = if (isRepeatedFromEarlier) "" else rawProposed
+
             var refinedPrimaryQuery = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
                 segmentText = cleanNarr.ifEmpty { existingPrompt },
                 proposedQuery = initialProposed,
-                style = style
+                style = style,
+                sceneNumber = sceneNum,
+                alreadyUsedQueries = usedQueriesAcrossReel,
+                topicContext = cleanTopic
             )
 
             // Discard contaminated or generic news channel tags if narrative doesn't actually describe them
             val narrLower = cleanNarr.lowercase()
             if (refinedPrimaryQuery.lowercase() in bannedNewsFluff ||
-                bannedNewsFluff.any { refinedPrimaryQuery.lowercase().contains(it) }
+                bannedNewsFluff.any { refinedPrimaryQuery.lowercase().contains(it) } ||
+                refinedPrimaryQuery.contains("documentary", ignoreCase = true)
             ) {
                 val hasActualAnchor = narrLower.contains("studio") || narrLower.contains("anchor") || narrLower.contains("रिपोर्टर")
                 val hasActualCourt = narrLower.contains("court") || narrLower.contains("judge") || narrLower.contains("अदालत") || narrLower.contains("कोर्ट")
@@ -288,50 +307,91 @@ object UnifiedPromptRefinementLayer {
                     refinedPrimaryQuery = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
                         segmentText = cleanNarr.ifEmpty { existingPrompt },
                         proposedQuery = "",
-                        style = style
+                        style = style,
+                        sceneNumber = sceneNum,
+                        alreadyUsedQueries = usedQueriesAcrossReel,
+                        topicContext = cleanTopic
                     )
                 }
             }
 
-            // 2. Refine all secondary keywords to eliminate banned fluff
+            // Strip any remaining occurrence of the word documentary
+            if (refinedPrimaryQuery.contains("documentary", ignoreCase = true)) {
+                refinedPrimaryQuery = refinedPrimaryQuery.replace(Regex("(?i)\\bdocumentary\\b"), "")
+                    .replace(Regex("\\s+"), " ").trim()
+                if (refinedPrimaryQuery.isBlank()) {
+                    refinedPrimaryQuery = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
+                        segmentText = cleanNarr.ifEmpty { existingPrompt },
+                        proposedQuery = "",
+                        style = style,
+                        sceneNumber = sceneNum,
+                        alreadyUsedQueries = usedQueriesAcrossReel,
+                        topicContext = cleanTopic
+                    )
+                }
+            }
+
+            // Record into used queries to guarantee subsequent scenes never repeat it
+            if (refinedPrimaryQuery.isNotBlank()) {
+                usedQueriesAcrossReel.add(refinedPrimaryQuery.lowercase().trim())
+            }
+
+            // 2. Refine all secondary keywords to eliminate banned fluff & documentary
             val cleanKeywords = mutableListOf<String>()
             if (refinedPrimaryQuery.isNotEmpty()) {
                 cleanKeywords.add(refinedPrimaryQuery)
             }
 
             scene.keywords.forEach { rawKw ->
-                var refined = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
-                    segmentText = cleanNarr.ifEmpty { existingPrompt },
-                    proposedQuery = rawKw,
-                    style = style
-                )
-                if (bannedNewsFluff.any { refined.lowercase().contains(it) }) {
-                    refined = ""
-                }
-                if (refined.isNotEmpty() && !cleanKeywords.contains(refined)) {
-                    cleanKeywords.add(refined)
+                val cleanKw = rawKw.replace(Regex("(?i)\\bdocumentary\\b"), "").trim()
+                if (cleanKw.isNotEmpty()) {
+                    var refined = ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
+                        segmentText = cleanNarr.ifEmpty { existingPrompt },
+                        proposedQuery = cleanKw,
+                        style = style,
+                        sceneNumber = sceneNum,
+                        alreadyUsedQueries = usedQueriesAcrossReel,
+                        topicContext = cleanTopic
+                    )
+                    if (bannedNewsFluff.any { refined.lowercase().contains(it) }) {
+                        refined = ""
+                    }
+                    if (refined.isNotEmpty() && !cleanKeywords.contains(refined)) {
+                        cleanKeywords.add(refined)
+                    }
                 }
             }
 
             if (cleanKeywords.isEmpty()) {
                 val derivedTokens = ScriptSemanticAnalysisEngine.refineKeywords(cleanNarr)
-                if (derivedTokens.isNotEmpty()) {
-                    cleanKeywords.addAll(derivedTokens.take(3))
+                val cleanDerived = derivedTokens.filter { !it.contains("documentary", ignoreCase = true) }
+                if (cleanDerived.isNotEmpty()) {
+                    cleanKeywords.addAll(cleanDerived.take(3))
                 } else if (refinedPrimaryQuery.isNotBlank() && refinedPrimaryQuery !in bannedNewsFluff) {
                     cleanKeywords.add(refinedPrimaryQuery)
                 } else {
-                    cleanKeywords.add("narrative visual scene")
+                    val stageFallback = when ((sceneNum - 1).coerceAtLeast(0) % 5) {
+                        0 -> "narrative opening action"
+                        1 -> "focused character movements"
+                        2 -> "intense dramatic turning moment"
+                        3 -> "contemplative detailed perspectives"
+                        else -> "inspirational journey horizon visual"
+                    }
+                    cleanKeywords.add(stageFallback)
                 }
             }
 
             // 3. Guarantee high-quality voiceover-matched visual prompt in fluent English
+            val firstScenePrompt = scenes.firstOrNull()?.visualPrompt ?: ""
             val isBrokenOrGenericPrompt = existingPrompt.isBlank() ||
                 existingPrompt.length < 25 ||
                 existingPrompt.any { it in '\u0900'..'\u097F' } ||
                 existingPrompt.equals(cleanNarr, ignoreCase = true) ||
                 existingPrompt.lowercase().contains("vibrant, crime") ||
                 existingPrompt.lowercase().contains("crime, vibrant") ||
-                existingPrompt.lowercase().trim() in setOf("crime", "vibrant", "police officer", "courtroom gavel", "vibrant scenic visual", "cinematic narrative scene", "news studio television broadcast") ||
+                existingPrompt.lowercase().contains("documentary") ||
+                (index > 0 && existingPrompt.equals(firstScenePrompt, ignoreCase = true)) ||
+                existingPrompt.lowercase().trim() in setOf("crime", "vibrant", "police officer", "courtroom gavel", "vibrant scenic visual", "cinematic narrative scene", "news studio television broadcast", "documentary") ||
                 existingPrompt.split("\\s+".toRegex()).size <= 3
 
             val targetVisualPrompt = if (isBrokenOrGenericPrompt) {
@@ -339,11 +399,11 @@ object UnifiedPromptRefinementLayer {
                     narrationText = cleanNarr,
                     style = style,
                     topicContext = cleanTopic,
-                    sceneNumber = index + 1,
+                    sceneNumber = sceneNum,
                     sceneTotal = scenes.size
                 )
             } else {
-                existingPrompt
+                existingPrompt.replace(Regex("(?i)\\bdocumentary\\b"), "editorial").replace(Regex("\\s+"), " ").trim()
             }
 
             // 4. Extract or synthesize lighting & camera composition

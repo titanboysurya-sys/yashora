@@ -559,7 +559,7 @@ class ProjectRepository(
             } else if (localExtracted.isNotEmpty() && !localExtracted.any { it.code > 127 }) {
                 localExtracted
             } else {
-                "news documentary journalism visual"
+                "news storytelling report visual"
             }
         } else {
             queryClean
@@ -569,7 +569,7 @@ class ProjectRepository(
             "TikTok / Instagram Reels" -> "vibrant TikTok dynamic angle, short-form visual reel"
             "YouTube Short" -> "YouTube short high retention clear focal point, centered detail"
             "Cinematic Vlog / Trailer" -> "cinematic vlog trailer moody anamorphic sweeping vista landscape"
-            "Short Documentary" -> "photojournalistic documentary archival, authentic slice of life"
+            "Short Documentary" -> "photojournalistic editorial archival, authentic slice of life"
             "Facebook Feed Video" -> "attention grabbing viral lifestyle, engaging facebook feed style"
             "LinkedIn Professional" -> "professional high class corporate business, LinkedIn networking"
             "Ad Promo / Marketing" -> "commercial product advertising showcase, bright advertising studio setup"
@@ -1116,6 +1116,7 @@ class ProjectRepository(
         topicContext: String = "",
         publishingStyle: String = "TikTok / Instagram Reels",
         sourceSpecificMedia: List<String> = emptyList(),
+        creativityLevel: Float = 0.5f,
         onProgress: ((current: Int, total: Int, status: String) -> Unit)? = null
     ): List<com.ritvyom.yashoraReelgenerator.domain.models.Scene> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val savedGemini = try {
@@ -1148,7 +1149,9 @@ class ProjectRepository(
             customGeminiKey = savedGemini,
             customUnsplashKey = savedUnsplash,
             topicContext = cleanTopic,
-            publishingStyle = publishingStyle
+            publishingStyle = publishingStyle,
+            visualDirectivesChunk = refinementPlan.visualDirectivesPromptChunk,
+            creativityLevel = creativityLevel
         )
 
         // Enforce strict scene-to-visual mapping and decoupled visual metadata on parsed scenes
@@ -1206,23 +1209,28 @@ class ProjectRepository(
         var resolvedPath: String? = null
         
         // Sanitize and refine scene keywords using feedback loop to ensure they strictly depict voiceover
+        val currentSceneNum = index + 1
         val segmentContent = scene.narrationText.ifEmpty { scene.subtitle.ifEmpty { scene.visualPrompt } }
         val highPrecisionQuery = com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
             segmentText = segmentContent,
             proposedQuery = scene.keywords.firstOrNull() ?: "",
-            style = style
+            style = style,
+            sceneNumber = currentSceneNum
         )
 
         val sanitizedKeywords = scene.keywords.map { kw ->
             com.ritvyom.yashoraReelgenerator.data.remote.ScriptSemanticAnalysisEngine.refineHighPrecisionSearchQuery(
                 segmentText = segmentContent,
                 proposedQuery = kw,
-                style = style
+                style = style,
+                sceneNumber = currentSceneNum
             )
-        }.filter { it.isNotEmpty() && !it.contains("atmospheric") && !it.contains("cinematic") }.distinct().toMutableList()
+        }.filter { it.isNotEmpty() && !it.contains("atmospheric") && !it.contains("cinematic") && !it.contains("documentary", ignoreCase = true) }.distinct().toMutableList()
 
         if (sanitizedKeywords.isEmpty() || !sanitizedKeywords.contains(highPrecisionQuery)) {
-            sanitizedKeywords.add(0, highPrecisionQuery)
+            if (highPrecisionQuery.isNotBlank() && !highPrecisionQuery.contains("documentary", ignoreCase = true)) {
+                sanitizedKeywords.add(0, highPrecisionQuery)
+            }
         }
         scene.keywords = sanitizedKeywords
         
@@ -2168,7 +2176,8 @@ class ProjectRepository(
         aspectRatio: String = "9:16",
         topicContext: String = "",
         imageSource: String = "Unsplash",
-        sourceSpecificMedia: List<String> = emptyList()
+        sourceSpecificMedia: List<String> = emptyList(),
+        creativityLevel: Float = 0.5f
     ): List<com.ritvyom.yashoraReelgenerator.domain.models.PreviewScene> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val savedGemini = try {
             preferencesManager.geminiApiKeyFlow.first()
@@ -2239,7 +2248,9 @@ class ProjectRepository(
             customGeminiKey = savedGemini,
             customUnsplashKey = savedUnsplash,
             topicContext = cleanTopic,
-            publishingStyle = "TikTok / Instagram Reels"
+            publishingStyle = "TikTok / Instagram Reels",
+            visualDirectivesChunk = refinementPlan.visualDirectivesPromptChunk,
+            creativityLevel = creativityLevel
         )
 
         val refinedScenes = com.ritvyom.yashoraReelgenerator.presentation.viewmodels.UnifiedPromptRefinementLayer
@@ -2645,7 +2656,7 @@ class ProjectRepository(
             if (localTranslated.isNotEmpty() && !localTranslated.any { it.code > 127 }) {
                 return localTranslated
             }
-            return "news documentary story visual"
+            return "news storytelling story visual"
         }
         return lowerClean
     }

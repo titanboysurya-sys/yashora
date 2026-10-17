@@ -58,6 +58,7 @@ fun ScriptAndConfigScreen(
     val appLanguageState by viewModel.appLanguage.collectAsState()
     val selectedStyleState by viewModel.selectedStyleName.collectAsState()
     val selectedPublishingStyleState by viewModel.selectedPublishingStyle.collectAsState()
+    val creativityLevelState by viewModel.creativityLevel.collectAsState()
     val selectedVoiceState by viewModel.selectedVoiceName.collectAsState()
     val selectedCategoryState by viewModel.selectedVoiceCategory.collectAsState()
     val speedState by viewModel.voiceSpeed.collectAsState()
@@ -776,9 +777,119 @@ fun ScriptAndConfigScreen(
                     }
                 }
 
+                // Section 3B: AI Prompt Creativity Level Slider
+                CardSectionHeader(index = 4, title = "Creativity & Contextual Adherence Level".localize(appLanguageState))
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("creativity_level_card"),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                val modeIcon = when {
+                                    creativityLevelState < 0.35f -> "🎯"
+                                    creativityLevelState in 0.35f..0.65f -> "⚖️"
+                                    else -> "🎨"
+                                }
+                                Text(modeIcon, fontSize = 22.sp)
+                                Column {
+                                    Text(
+                                        text = when {
+                                            creativityLevelState < 0.35f -> "Strict Contextual Adherence".localize(appLanguageState)
+                                            creativityLevelState in 0.35f..0.65f -> "Balanced Contextual Visuals".localize(appLanguageState)
+                                            else -> "Abstract Creative Interpretation".localize(appLanguageState)
+                                        },
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = when {
+                                            creativityLevelState < 0.35f -> "Literal physical actions & concrete objects directly from narration".localize(appLanguageState)
+                                            creativityLevelState in 0.35f..0.65f -> "Dynamic realistic storytelling progressing with each scene".localize(appLanguageState)
+                                            else -> "Atmospheric cinematic metaphors, rich moods & poetic symbolism".localize(appLanguageState)
+                                        },
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        lineHeight = 12.sp,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                            ) {
+                                Text(
+                                    text = String.format(java.util.Locale.US, "%.1f", creativityLevelState),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Slider(
+                            value = creativityLevelState,
+                            onValueChange = { viewModel.updateCreativityLevel(it) },
+                            valueRange = 0.0f..1.0f,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("creativity_level_slider")
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Strict Contextual (0.0)".localize(appLanguageState),
+                                fontSize = 9.sp,
+                                fontWeight = if (creativityLevelState < 0.35f) FontWeight.Bold else FontWeight.Normal,
+                                color = if (creativityLevelState < 0.35f) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Balanced (0.5)".localize(appLanguageState),
+                                fontSize = 9.sp,
+                                fontWeight = if (creativityLevelState in 0.35f..0.65f) FontWeight.Bold else FontWeight.Normal,
+                                color = if (creativityLevelState in 0.35f..0.65f) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Abstract Creative (1.0)".localize(appLanguageState),
+                                fontSize = 9.sp,
+                                fontWeight = if (creativityLevelState > 0.65f) FontWeight.Bold else FontWeight.Normal,
+                                color = if (creativityLevelState > 0.65f) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 // Section 2B-1: Choose Visual Background Medium (Video vs Image)
                 val visualMediumState by viewModel.selectedVisualMedium.collectAsState()
-                CardSectionHeader(index = 4, title = "Visual Background Medium".localize(appLanguageState))
+                CardSectionHeader(index = 5, title = "Visual Background Medium".localize(appLanguageState))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -830,7 +941,10 @@ fun ScriptAndConfigScreen(
 
                 // Section 2B-2: Choose Visual Background Source
                 val imageSourceState by viewModel.selectedImageSource.collectAsState()
-                CardSectionHeader(index = 5, title = "Choose Visual Background Source".localize(appLanguageState))
+                val primarySources = remember { listOf("Unsplash", "AI Generated", "Pexels", "Pixabay") }
+                val isExtendedSourceSelected = imageSourceState !in primarySources
+                var showAllSources by remember { mutableStateOf(false) }
+                CardSectionHeader(index = 6, title = "Choose Visual Background Source".localize(appLanguageState))
                 
                 // Row 1: Unsplash & AI Generated
                 Row(
@@ -934,10 +1048,112 @@ fun ScriptAndConfigScreen(
                     }
                 }
 
+                // Active Source Indicator (when folded and a non-primary source is active)
+                if (!showAllSources && isExtendedSourceSelected) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("active_extended_source_indicator"),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text("✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Active Source: $imageSourceState".localize(appLanguageState),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = "Tap 'Explore 11 More Visual Sources' below to switch sources".localize(appLanguageState),
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Row 2: Wikimedia Commons & Nekos Anime
-                Row(
+                // Toggle Button to Fold / Unfold remaining sources
+                Surface(
+                    onClick = { showAllSources = !showAllSources },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("toggle_more_sources_button"),
+                    shape = RoundedCornerShape(18.dp),
+                    color = if (showAllSources) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, if (showAllSources) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = if (showAllSources) "📂" else "✨",
+                                fontSize = 20.sp
+                            )
+                            Column {
+                                Text(
+                                    text = if (showAllSources) {
+                                        "Show Fewer Sources (Fold)".localize(appLanguageState)
+                                    } else {
+                                        "Explore 11 More Visual Sources".localize(appLanguageState)
+                                    },
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (showAllSources) {
+                                        "Fold extended libraries to primary 4 sources".localize(appLanguageState)
+                                    } else {
+                                        "Anime, Wikimedia, Archives, Memes, NASA & Healthcare".localize(appLanguageState)
+                                    },
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Icon(
+                            imageVector = if (showAllSources) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = if (showAllSources) "Fold sources" else "Unfold sources",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = showAllSources,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Row 2: Wikimedia Commons & Nekos Anime
+                        Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -1271,9 +1487,13 @@ fun ScriptAndConfigScreen(
                         }
                     }
                 }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Section 3: TTS Neural Voice Settings (80+ voices)
-                CardSectionHeader(index = 6, title = "Neural Speech & Language Engine".localize(appLanguageState))
+                CardSectionHeader(index = 7, title = "Neural Speech & Language Engine".localize(appLanguageState))
                 
                 // TTS Engine selector Card
                 val ttsEngineState by viewModel.selectedTtsEngine.collectAsState()
@@ -1742,7 +1962,7 @@ fun ScriptAndConfigScreen(
                 }
 
                 // Section 4: Aspect Ratio & Canvas Layout (6 choices)
-                CardSectionHeader(index = 7, title = "Reel Layout Canvas Properties".localize(appLanguageState))
+                CardSectionHeader(index = 8, title = "Reel Layout Canvas Properties".localize(appLanguageState))
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1851,7 +2071,7 @@ fun ScriptAndConfigScreen(
                 }
 
                 // Section 5: Background Music & Audio overlay
-                CardSectionHeader(index = 8, title = "Soundtrack & Audio Controls".localize(appLanguageState))
+                CardSectionHeader(index = 9, title = "Soundtrack & Audio Controls".localize(appLanguageState))
                 OutlinedCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
